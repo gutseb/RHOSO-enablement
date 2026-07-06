@@ -1,0 +1,24 @@
+---
+# =============================================================================
+# RHOSO Lab — Vault Template
+# Copy this file to: inventory/group_vars/all/vault.yml
+# Fill in your values, then encrypt with:
+#   ansible-vault encrypt inventory/group_vars/all/vault.yml
+#
+# This TEMPLATE is safe to commit. The populated vault.yml is in .gitignore.
+# =============================================================================
+
+# Bastion SSH password (provided in your lab welcome email)
+vault_bastion_password: ""
+
+# OpenShift admin password (provided in your lab welcome email)
+vault_ocp_password: ""
+
+# Red Hat Registry service account credentials
+# Obtain from: https://access.redhat.com/RegistryAuthentication (service accounts section)
+vault_registry_username: ""
+vault_registry_password: ""
+
+# Red Hat Customer Portal credentials (for subscription-manager on compute nodes)
+vault_rhc_username: ""
+vault_rhc_password: ""

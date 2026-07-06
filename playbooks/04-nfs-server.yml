@@ -1,0 +1,9 @@
+---
+# 04-nfs-server.yml — Install and configure NFS server on the bastion/data-plane host.
+- name: "Phase 04 — Install NFS Server"
+  hosts: bastion
+  gather_facts: false
+  vars_files:
+    - "{{ playbook_dir }}/../inventory/group_vars/all/vars.yml"
+  roles:
+    - role: nfs-server

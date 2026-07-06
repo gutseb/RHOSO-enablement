@@ -1,0 +1,72 @@
+---
+# All tasks delegate to the nfs-server host (reached through bastion via SSH key).
+
+- name: Create NFS export directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0777'
+  loop:
+    - "{{ nfs_cinder_path }}"
+    - "{{ nfs_glance_path }}"
+    - "{{ nfs_aap_path }}"
+  delegate_to: nfs-server
+  become: true
+
+- name: Configure NFS exports
+  ansible.builtin.copy:
+    content: |
+      {{ nfs_cinder_path }} *(rw,sync,no_root_squash)
+      {{ nfs_glance_path }} *(rw,sync,no_root_squash)
+      {{ nfs_aap_path }} *(rw,sync,no_root_squash)
+    dest: /etc/exports
+    backup: true
+  delegate_to: nfs-server
+  become: true
+
+- name: Delete default wired connection (idempotent)
+  ansible.builtin.command: nmcli con delete "Wired connection 1"
+  delegate_to: nfs-server
+  become: true
+  ignore_errors: true
+  changed_when: false
+
+- name: Add static storage network interface
+  ansible.builtin.command: >
+    nmcli con add con-name "static-eth1" ifname eth1 type ethernet ip4 {{ nfs_server_ip }}/24
+  delegate_to: nfs-server
+  become: true
+  register: nmcli_add
+  changed_when: "'successfully added' in (nmcli_add.stdout | default(''))"
+  failed_when: nmcli_add.rc != 0 and 'already exists' not in (nmcli_add.stderr | default(''))
+
+- name: Bring up static-eth1
+  ansible.builtin.command: nmcli con up "static-eth1"
+  delegate_to: nfs-server
+  become: true
+  changed_when: true
+
+- name: Start and enable NFS server
+  ansible.builtin.systemd:
+    name: nfs-server
+    state: started
+    enabled: true
+  delegate_to: nfs-server
+  become: true
+
+- name: Export NFS shares
+  ansible.builtin.command: exportfs -ra
+  delegate_to: nfs-server
+  become: true
+  changed_when: true
+
+- name: Verify NFS exports are active
+  ansible.builtin.command: exportfs -v
+  delegate_to: nfs-server
+  become: true
+  register: nfs_exports
+  changed_when: false
+
+- name: Display active NFS exports
+  ansible.builtin.debug:
+    var: nfs_exports.stdout_lines

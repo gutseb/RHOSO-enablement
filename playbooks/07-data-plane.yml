@@ -1,0 +1,9 @@
+---
+# 07-data-plane.yml — Deploy RHOSO data plane via OpenShift GitOps (ArgoCD).
+- name: "Phase 07 — Deploy RHOSO Data Plane (GitOps)"
+  hosts: bastion
+  gather_facts: false
+  vars_files:
+    - "{{ playbook_dir }}/../inventory/group_vars/all/vars.yml"
+  roles:
+    - role: data-plane

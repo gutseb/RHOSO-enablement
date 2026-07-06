@@ -1,0 +1,106 @@
+---
+- name: Assert lab_guid is set
+  ansible.builtin.assert:
+    that:
+      - lab_guid is defined
+      - lab_guid != "REPLACE_WITH_YOUR_GUID"
+    fail_msg: "Set lab_guid in inventory/group_vars/all/vars.yml before running."
+
+- name: Assert github_id is set
+  ansible.builtin.assert:
+    that:
+      - github_id is defined
+      - github_id != "REPLACE_WITH_YOUR_GITHUB_ID"
+    fail_msg: "Set github_id in inventory/group_vars/all/vars.yml before running."
+
+- name: Verify bastion connectivity
+  ansible.builtin.ping:
+
+- name: Check oc CLI is available on bastion
+  ansible.builtin.command: oc version --client
+  register: oc_version
+  changed_when: false
+  failed_when: oc_version.rc != 0
+
+- name: Log in to OpenShift cluster
+  ansible.builtin.command: >
+    oc login {{ ocp_api_url }}
+    --username={{ ocp_admin_user }}
+    --password={{ vault_ocp_password }}
+    --insecure-skip-tls-verify=true
+  register: oc_login
+  changed_when: "'Login successful' in oc_login.stdout"
+  no_log: true
+
+- name: Verify OCP cluster access
+  ansible.builtin.command: oc get nodes
+  register: ocp_nodes
+  changed_when: false
+
+- name: Display cluster nodes
+  ansible.builtin.debug:
+    var: ocp_nodes.stdout_lines
+
+- name: Check if kustomize is installed
+  ansible.builtin.command: which kustomize
+  register: kustomize_check
+  changed_when: false
+  failed_when: false
+
+- name: Install kustomize
+  when: kustomize_check.rc != 0
+  block:
+    - name: Download kustomize archive
+      ansible.builtin.get_url:
+        url: "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.6.0/kustomize_v5.6.0_linux_amd64.tar.gz"
+        dest: "/tmp/kustomize.tar.gz"
+        mode: '0644'
+
+    - name: Extract kustomize
+      ansible.builtin.unarchive:
+        src: "/tmp/kustomize.tar.gz"
+        dest: "/tmp"
+        remote_src: true
+
+    - name: Install kustomize to /usr/local/bin
+      ansible.builtin.copy:
+        src: "/tmp/kustomize"
+        dest: "/usr/local/bin/kustomize"
+        mode: '0755'
+        remote_src: true
+      become: true
+
+- name: Verify kustomize version
+  ansible.builtin.command: kustomize version
+  register: kustomize_version
+  changed_when: false
+
+- name: Check if lab repo is already cloned
+  ansible.builtin.stat:
+    path: "{{ lab_repo_local_path }}"
+  register: labrepo_stat
+
+- name: Clone lab repo from student GitHub fork
+  ansible.builtin.git:
+    repo: "https://github.com/{{ github_id }}/{{ lab_repo_name }}.git"
+    dest: "{{ lab_repo_local_path }}"
+    version: main
+    accept_hostkey: true
+  when: not labrepo_stat.stat.exists
+
+- name: Configure git identity on bastion
+  ansible.builtin.command: "git config --global {{ item.key }} '{{ item.value }}'"
+  loop:
+    - { key: "user.email", value: "{{ bastion_user }}@lab.local" }
+    - { key: "user.name", value: "Lab User {{ lab_guid }}" }
+  changed_when: true
+
+- name: Display lab environment summary
+  ansible.builtin.debug:
+    msg:
+      - "Lab GUID      : {{ lab_guid }}"
+      - "GitHub ID     : {{ github_id }}"
+      - "OCP Console   : {{ ocp_console_url }}"
+      - "OCP API       : {{ ocp_api_url }}"
+      - "Lab repo      : {{ lab_repo_local_path }}"
+      - "kustomize     : {{ kustomize_version.stdout }}"

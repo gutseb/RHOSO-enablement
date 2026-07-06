@@ -1,0 +1,7 @@
+---
+# data-plane/tasks/main.yml — PLACEHOLDER
+# Tasks will be added as lab content is developed.
+- name: "PLACEHOLDER — data-plane tasks"
+  ansible.builtin.debug:
+    msg: "Phase tasks for role 'data-plane' are not yet implemented. Paste lab content to proceed."
+  tags: [placeholder]

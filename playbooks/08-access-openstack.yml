@@ -1,0 +1,9 @@
+---
+# 08-access-openstack.yml — Verify OpenStack access and run smoke tests.
+- name: "Phase 08 — Verify OpenStack Access"
+  hosts: bastion
+  gather_facts: false
+  vars_files:
+    - "{{ playbook_dir }}/../inventory/group_vars/all/vars.yml"
+  roles:
+    - role: openstack-access

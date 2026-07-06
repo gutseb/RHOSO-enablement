@@ -1,0 +1,222 @@
+---
+# Deploys the RHOSO control plane via OpenShift GitOps (ArgoCD).
+# Creates a kustomize overlay in the student's fork, commits it, then deploys
+# an ArgoCD Application that pulls from their GitHub repo.
+
+- name: Set manifests directory path
+  ansible.builtin.set_fact:
+    manifests_dir: "{{ lab_repo_local_path }}/content/files/manifests"
+
+# ── Kustomize base overlay ─────────────────────────────────────────────────────
+
+- name: Create environments/base directory
+  ansible.builtin.file:
+    path: "{{ manifests_dir }}/environments/base"
+    state: directory
+    mode: '0755'
+
+- name: Create environments/base/kustomization.yaml
+  ansible.builtin.copy:
+    dest: "{{ manifests_dir }}/environments/base/kustomization.yaml"
+    content: |
+      apiVersion: kustomize.config.k8s.io/v1beta1
+      kind: Kustomization
+
+      components:
+        - https://github.com/openstack-k8s-operators/gitops/components/argocd/annotations?ref=v0.1.1
+
+      resources:
+        - https://github.com/rh-osp-demo/showroom_osp-on-ocp-day2/content/files/manifests/base/controlplane/?ref=main
+
+- name: Validate base kustomization can be built
+  ansible.builtin.command:
+    cmd: kustomize build environments/base
+    chdir: "{{ manifests_dir }}"
+  register: base_kustomize_build
+  changed_when: false
+
+# ── Environment overlay ────────────────────────────────────────────────────────
+
+- name: Create environments/demo-env/controlplane directory
+  ansible.builtin.file:
+    path: "{{ manifests_dir }}/environments/demo-env/controlplane"
+    state: directory
+    mode: '0755'
+
+- name: Create demo-env controlplane kustomization.yaml with NNCP and NetConfig patches
+  ansible.builtin.copy:
+    dest: "{{ manifests_dir }}/environments/demo-env/controlplane/kustomization.yaml"
+    content: |
+      apiVersion: kustomize.config.k8s.io/v1beta1
+      kind: Kustomization
+
+      resources:
+        - ../../base/controlplane
+
+      patches:
+        - target:
+            group: nmstate.io
+            version: v1
+            kind: NodeNetworkConfigurationPolicy
+            name: osp-multi-nic-worker-ocp4-worker1
+          patch: |-
+            - op: replace
+              path: /metadata/name
+              value: "control-plane-cluster-{{ lab_guid }}-1"
+            - op: replace
+              path: /spec/nodeSelector/kubernetes.io~1hostname
+              value: "control-plane-cluster-{{ lab_guid }}-1"
+            - op: replace
+              path: /spec/desiredState/interfaces/3/ipv4/address/0/ip
+              value: "{{ rhoso_external_ip_worker_1 }}"
+
+        - target:
+            group: nmstate.io
+            version: v1
+            kind: NodeNetworkConfigurationPolicy
+            name: osp-multi-nic-worker-ocp4-worker2
+          patch: |-
+            - op: replace
+              path: /metadata/name
+              value: "control-plane-cluster-{{ lab_guid }}-2"
+            - op: replace
+              path: /spec/nodeSelector/kubernetes.io~1hostname
+              value: "control-plane-cluster-{{ lab_guid }}-2"
+            - op: replace
+              path: /spec/desiredState/interfaces/3/ipv4/address/0/ip
+              value: "{{ rhoso_external_ip_worker_2 }}"
+
+        - target:
+            group: nmstate.io
+            version: v1
+            kind: NodeNetworkConfigurationPolicy
+            name: osp-multi-nic-worker-ocp4-worker3
+          patch: |-
+            - op: replace
+              path: /metadata/name
+              value: "control-plane-cluster-{{ lab_guid }}-3"
+            - op: replace
+              path: /spec/nodeSelector/kubernetes.io~1hostname
+              value: "control-plane-cluster-{{ lab_guid }}-3"
+            - op: replace
+              path: /spec/desiredState/interfaces/3/ipv4/address/0/ip
+              value: "{{ rhoso_external_ip_worker_3 }}"
+
+        - target:
+            kind: NetConfig
+            name: openstacknetconfig
+          patch: |-
+            - op: replace
+              path: /spec/networks/0/dnsDomain
+              value: ctlplane.sandbox-{{ lab_guid }}-ocp4-cluster.svc.cluster.local
+            - op: replace
+              path: /spec/networks/1/dnsDomain
+              value: internalapi.sandbox-{{ lab_guid }}-ocp4-cluster.svc.cluster.local
+            - op: replace
+              path: /spec/networks/2/dnsDomain
+              value: tenant.sandbox-{{ lab_guid }}-ocp4-cluster.svc.cluster.local
+            - op: replace
+              path: /spec/networks/3/dnsDomain
+              value: storage.sandbox-{{ lab_guid }}-ocp4-cluster.svc.cluster.local
+            - op: replace
+              path: /spec/networks/4/dnsDomain
+              value: external.sandbox-{{ lab_guid }}-ocp4-cluster.svc.cluster.local
+
+- name: Validate demo-env overlay can be built
+  ansible.builtin.command:
+    cmd: kustomize build environments/demo-env/controlplane
+    chdir: "{{ manifests_dir }}"
+  register: overlay_kustomize_build
+  changed_when: false
+
+# ── ArgoCD Application directory and manifest ──────────────────────────────────
+
+- name: Create applications/rhoso directory
+  ansible.builtin.file:
+    path: "{{ lab_repo_local_path }}/content/files/manifests/applications/rhoso"
+    state: directory
+    mode: '0755'
+
+- name: Create ArgoCD Application manifest
+  ansible.builtin.copy:
+    dest: "{{ lab_repo_local_path }}/content/files/manifests/applications/rhoso/application-environment-demo-env-controlplane.yaml"
+    content: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: Application
+      metadata:
+        finalizers:
+        - resources-finalizer.argocd.argoproj.io
+        name: environment-rhoso-demo-env-controlplane
+        namespace: openshift-gitops
+      spec:
+        destination:
+          server: https://kubernetes.default.svc
+        project: default
+        source:
+          path: content/files/manifests/environments/demo-env/controlplane/
+          repoURL: https://github.com/{{ github_id }}/{{ lab_repo_name }}.git
+          targetRevision: HEAD
+        syncPolicy:
+          automated: {}
+
+# ── Commit and push to GitHub ─────────────────────────────────────────────────
+
+- name: Stage kustomize overlay files
+  ansible.builtin.command:
+    cmd: git add content/files/manifests/environments content/files/manifests/applications
+    chdir: "{{ lab_repo_local_path }}"
+  changed_when: true
+
+- name: Commit control plane overlay
+  ansible.builtin.command:
+    cmd: >
+      git commit -m "Add control plane kustomize overlay and ArgoCD application for {{ lab_guid }}"
+    chdir: "{{ lab_repo_local_path }}"
+  register: git_commit
+  changed_when: git_commit.rc == 0
+  failed_when: git_commit.rc != 0 and 'nothing to commit' not in git_commit.stdout
+
+- name: Push overlay to GitHub
+  ansible.builtin.command:
+    cmd: git push origin main
+    chdir: "{{ lab_repo_local_path }}"
+  register: git_push
+  changed_when: git_push.rc == 0
+  when: git_commit.rc == 0
+
+# ── Deploy via ArgoCD ─────────────────────────────────────────────────────────
+
+- name: Deploy control plane ArgoCD Application
+  ansible.builtin.command: >
+    oc create --save-config -f
+    {{ lab_repo_local_path }}/content/files/manifests/applications/rhoso/application-environment-demo-env-controlplane.yaml
+  register: argocd_app_create
+  changed_when: argocd_app_create.rc == 0
+  failed_when: argocd_app_create.rc != 0 and 'AlreadyExists' not in argocd_app_create.stderr
+
+- name: Wait for ArgoCD Application to become Healthy
+  ansible.builtin.command: >
+    oc wait --timeout=600s -n {{ rhoso_gitops_namespace }}
+    applications.argoproj.io/environment-rhoso-demo-env-controlplane
+    --for jsonpath='{.status.health.status}'=Healthy
+  register: argocd_health_wait
+  changed_when: false
+
+- name: Wait for OpenStack control plane to complete setup
+  ansible.builtin.command: >
+    oc wait --timeout={{ deployment_wait_timeout }}s
+    -n {{ openstack_namespace }}
+    openstackcontrolplane/openstack-control-plane
+    --for condition=Ready=True
+  register: cp_ready_wait
+  changed_when: false
+
+- name: Display control plane status
+  ansible.builtin.command: >
+    oc get openstackcontrolplane -n {{ openstack_namespace }}
+  register: cp_status
+  changed_when: false
+
+- name: Show control plane status
+  ansible.builtin.debug:
+    var: cp_status.stdout_lines

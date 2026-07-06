@@ -1,0 +1,94 @@
+---
+# Creates all secrets required by the RHOSO control and data planes.
+# Runs on the bastion; oc commands target the openstack namespace.
+
+- name: Switch to openstack namespace
+  ansible.builtin.command: oc project {{ openstack_namespace }}
+  changed_when: true
+
+- name: Create osp-secret from pre-configured yaml
+  ansible.builtin.command: >
+    oc create -f {{ lab_repo_local_path }}/content/files/osp-ng-ctlplane-secret.yaml
+  register: osp_secret_create
+  changed_when: osp_secret_create.rc == 0
+  failed_when: osp_secret_create.rc != 0 and 'AlreadyExists' not in osp_secret_create.stderr
+
+- name: Create libvirt secret from pre-configured yaml
+  ansible.builtin.command: >
+    oc create -f {{ lab_repo_local_path }}/content/files/osp-ng-libvirt-secret.yaml
+  register: libvirt_secret_create
+  changed_when: libvirt_secret_create.rc == 0
+  failed_when: libvirt_secret_create.rc != 0 and 'AlreadyExists' not in libvirt_secret_create.stderr
+
+- name: Create cinder-nfs-config secret from NFS config file
+  ansible.builtin.command: >
+    oc create secret generic cinder-nfs-config
+    --from-file=nfs-cinder-conf={{ lab_repo_local_path }}/content/files/nfs-cinder-conf
+    -n {{ openstack_namespace }}
+  register: cinder_nfs_secret
+  changed_when: cinder_nfs_secret.rc == 0
+  failed_when: cinder_nfs_secret.rc != 0 and 'AlreadyExists' not in cinder_nfs_secret.stderr
+
+- name: Create subscription-manager secret
+  ansible.builtin.shell: |
+    oc create secret generic subscription-manager \
+      --from-literal rhc_auth='{"login": {"username": "{{ vault_rhc_username }}", "password": "{{ vault_rhc_password }}"}}' \
+      -n {{ openstack_namespace }}
+  register: rhc_secret
+  changed_when: rhc_secret.rc == 0
+  failed_when: rhc_secret.rc != 0 and 'AlreadyExists' not in rhc_secret.stderr
+  no_log: true
+
+- name: Create redhat-registry secret
+  ansible.builtin.shell: |
+    oc create secret generic redhat-registry \
+      --from-literal edpm_container_registry_logins='{"registry.redhat.io": {"{{ vault_registry_username }}": "{{ vault_registry_password }}"}}' \
+      -n {{ openstack_namespace }}
+  register: registry_secret
+  changed_when: registry_secret.rc == 0
+  failed_when: registry_secret.rc != 0 and 'AlreadyExists' not in registry_secret.stderr
+  no_log: true
+
+- name: Create dataplane-ansible-ssh-private-key-secret
+  ansible.builtin.shell: |
+    oc create secret generic dataplane-ansible-ssh-private-key-secret \
+      --save-config --dry-run=client \
+      --from-file=authorized_keys={{ bastion_ssh_pub_key_path }} \
+      --from-file=ssh-privatekey={{ bastion_ssh_key_path }} \
+      --from-file=ssh-publickey={{ bastion_ssh_pub_key_path }} \
+      -n {{ openstack_namespace }} -o yaml | oc apply -f-
+  register: dataplane_ssh_secret
+  changed_when: dataplane_ssh_secret.rc == 0
+
+- name: Generate nova migration SSH key pair
+  ansible.builtin.command: >
+    ssh-keygen -f /tmp/nova-migration-id -t ecdsa-sha2-nistp521 -N ''
+  args:
+    creates: /tmp/nova-migration-id
+
+- name: Create nova-migration-ssh-key secret
+  ansible.builtin.shell: |
+    oc create secret generic nova-migration-ssh-key \
+      --from-file=ssh-privatekey=/tmp/nova-migration-id \
+      --from-file=ssh-publickey=/tmp/nova-migration-id.pub \
+      -n {{ openstack_namespace }} -o yaml | oc apply -f-
+  register: nova_migration_secret
+  changed_when: nova_migration_secret.rc == 0
+
+- name: Clean up temporary nova migration key files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/nova-migration-id
+    - /tmp/nova-migration-id.pub
+
+- name: Verify secrets exist in openstack namespace
+  ansible.builtin.shell: >
+    oc get secrets -n {{ openstack_namespace }} --no-headers | awk '{print $1}'
+  register: openstack_secrets
+  changed_when: false
+
+- name: Display secrets in openstack namespace
+  ansible.builtin.debug:
+    var: openstack_secrets.stdout_lines

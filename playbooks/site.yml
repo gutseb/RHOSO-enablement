@@ -1,0 +1,33 @@
+---
+# site.yml — Master playbook: runs all RHOSO lab phases in order.
+# Run individual playbooks to re-run a specific phase.
+#
+# Usage:
+#   ansible-playbook playbooks/site.yml --ask-vault-pass
+#   ansible-playbook playbooks/site.yml --ask-vault-pass --tags phase=05
+- name: "Phase 00 — Prerequisites"
+  import_playbook: 00-prerequisites.yml
+
+- name: "Phase 01 — Install Operator Prerequisites (GitOps)"
+  import_playbook: 01-gitops-operators.yml
+
+- name: "Phase 02 — Install RHOSO Operators (GitOps)"
+  import_playbook: 02-rhoso-operators.yml
+
+- name: "Phase 03 — Configure Secure Access for OpenStack Services"
+  import_playbook: 03-secure-access.yml
+
+- name: "Phase 04 — Install NFS Server"
+  import_playbook: 04-nfs-server.yml
+
+- name: "Phase 05 — Deploy RHOSO Control Plane (GitOps)"
+  import_playbook: 05-control-plane.yml
+
+- name: "Phase 06 — Networking Patch (if required)"
+  import_playbook: 06-networking-patch.yml
+
+- name: "Phase 07 — Deploy RHOSO Data Plane (GitOps)"
+  import_playbook: 07-data-plane.yml
+
+- name: "Phase 08 — Verify OpenStack Access"
+  import_playbook: 08-access-openstack.yml

@@ -1,0 +1,9 @@
+---
+# 03-secure-access.yml — Configure Secure Access for OpenStack Services.
+- name: "Phase 03 — Configure Secure Access for OpenStack Services"
+  hosts: bastion
+  gather_facts: false
+  vars_files:
+    - "{{ playbook_dir }}/../inventory/group_vars/all/vars.yml"
+  roles:
+    - role: secure-access

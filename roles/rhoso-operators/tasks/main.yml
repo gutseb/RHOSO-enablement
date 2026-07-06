@@ -1,0 +1,129 @@
+---
+- name: Create openstack-operators namespace
+  ansible.builtin.shell: |
+    oc apply -f - <<'EOF'
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: {{ openstack_operators_namespace }}
+    EOF
+  register: ns_operators
+  changed_when: "'created' in ns_operators.stdout or 'configured' in ns_operators.stdout"
+
+- name: Create openstack namespace
+  ansible.builtin.shell: |
+    oc apply -f - <<'EOF'
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: {{ openstack_namespace }}
+    EOF
+  register: ns_openstack
+  changed_when: "'created' in ns_openstack.stdout or 'configured' in ns_openstack.stdout"
+
+- name: Apply OpenStack OperatorGroup
+  ansible.builtin.shell: |
+    oc apply -f - <<'EOF'
+    apiVersion: operators.coreos.com/v1
+    kind: OperatorGroup
+    metadata:
+      name: openstack
+      namespace: {{ openstack_operators_namespace }}
+    EOF
+  register: og_result
+  changed_when: "'created' in og_result.stdout or 'configured' in og_result.stdout"
+
+- name: Apply OpenStack Subscription (manual approval)
+  ansible.builtin.shell: |
+    oc apply -f - <<'EOF'
+    apiVersion: operators.coreos.com/v1alpha1
+    kind: Subscription
+    metadata:
+      labels:
+        operators.coreos.com/openstack-operator.openstack-operators: ""
+      name: openstack-operator
+      namespace: {{ openstack_operators_namespace }}
+    spec:
+      channel: stable-v1.0
+      installPlanApproval: Manual
+      name: openstack-operator
+      source: redhat-operators
+      sourceNamespace: openshift-marketplace
+    EOF
+  register: sub_result
+  changed_when: "'created' in sub_result.stdout or 'configured' in sub_result.stdout"
+
+- name: Wait for InstallPlan to appear
+  ansible.builtin.shell: >
+    oc get installplan -n {{ openstack_operators_namespace }}
+    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null
+  register: installplan_name
+  until: installplan_name.stdout | length > 0
+  retries: 30
+  delay: 10
+  changed_when: false
+
+- name: Approve the InstallPlan
+  ansible.builtin.shell: >
+    oc patch installplan {{ installplan_name.stdout }}
+    -n {{ openstack_operators_namespace }}
+    --type merge
+    -p '{"spec":{"approved":true}}'
+  register: approve_result
+  changed_when: "'patched' in approve_result.stdout"
+
+- name: Wait for OpenStack operator CSV to reach Succeeded
+  ansible.builtin.shell: >
+    oc get csv -n {{ openstack_operators_namespace }}
+    -l operators.coreos.com/openstack-operator.openstack-operators
+    -o jsonpath='{.items[0].status.phase}' 2>/dev/null
+  register: csv_phase
+  until: csv_phase.stdout == "Succeeded"
+  retries: 60
+  delay: 15
+  changed_when: false
+
+- name: Wait for OpenStack CRD to be available
+  ansible.builtin.shell: >
+    oc get crd openstackcontrolplanes.core.openstack.org
+    -o jsonpath='{.metadata.name}' 2>/dev/null
+  register: crd_check
+  until: crd_check.rc == 0 and crd_check.stdout | length > 0
+  retries: 30
+  delay: 10
+  changed_when: false
+
+- name: Initialise the OpenStack operator
+  ansible.builtin.shell: |
+    oc apply -f - <<'EOF'
+    apiVersion: operator.openstack.org/v1beta1
+    kind: OpenStack
+    metadata:
+      name: openstack
+      namespace: {{ openstack_operators_namespace }}
+    EOF
+  register: init_result
+  changed_when: "'created' in init_result.stdout or 'configured' in init_result.stdout"
+
+- name: Wait for OpenStack operator pods to be Running
+  ansible.builtin.shell: >
+    oc get pods -n {{ openstack_operators_namespace }}
+    -l control-plane=controller-manager
+    --field-selector=status.phase=Running
+    -o jsonpath='{.items}' 2>/dev/null
+  register: operator_pods
+  until: operator_pods.stdout | from_json | length >= 1
+  retries: 60
+  delay: 10
+  changed_when: false
+
+- name: Show OpenStack operator status
+  ansible.builtin.command: >
+    oc get csv -n {{ openstack_operators_namespace }}
+    -l operators.coreos.com/openstack-operator.openstack-operators
+  changed_when: false
+  register: csv_status
+
+- name: Display CSV status
+  ansible.builtin.debug:
+    var: csv_status.stdout_lines

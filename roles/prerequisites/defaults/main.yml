@@ -1,0 +1,4 @@
+---
+# prerequisites role defaults — override in vars.yml or inventory
+lab_repo_local_path: "~/labrepo"
+ocp_admin_user: "admin"

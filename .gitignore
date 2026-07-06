@@ -1,0 +1,27 @@
+# Ansible Vault — never commit unencrypted secrets
+inventory/group_vars/all/vault.yml
+.vault_password
+.vault_pass
+
+# SSH keys and certificates
+*.pem
+*.key
+*.crt
+id_rsa
+id_ed25519
+
+# Ansible retry files
+*.retry
+
+# Local overrides
+*.local.yml
+*.local.yaml
+
+# Reference clones (local only — not part of the project)
+reference/
+
+# Editor / OS
+.DS_Store
+*.swp
+*~
+.vscode/

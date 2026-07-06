@@ -1,0 +1,43 @@
+---
+# 00-prerequisites.yml — Verify bastion connectivity, fork setup, and SSH agent.
+
+# Step 1: Configure local SSH client before Ansible tries to connect to the bastion.
+# Some lab environments reject connections when SSH presents more identities than
+# the server allows.  IdentitiesOnly yes tells SSH to use only the password (or
+# the explicit key) rather than every key loaded in the agent.
+- name: "Phase 00 — Configure local SSH client"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - "{{ playbook_dir }}/../inventory/group_vars/all/vars.yml"
+  tasks:
+    - name: Ensure ~/.ssh directory exists
+      ansible.builtin.file:
+        path: "{{ lookup('env', 'HOME') }}/.ssh"
+        state: directory
+        mode: '0700'
+
+    - name: Add IdentitiesOnly entry for bastion in ~/.ssh/config
+      ansible.builtin.blockinfile:
+        path: "{{ lookup('env', 'HOME') }}/.ssh/config"
+        create: true
+        mode: '0600'
+        marker: "# {mark} ANSIBLE MANAGED — RHOSO lab bastion {{ bastion_hostname }}"
+        block: |
+          Host {{ bastion_hostname }}
+            IdentitiesOnly yes
+            PasswordAuthentication yes
+
+    - name: Show SSH config status
+      ansible.builtin.debug:
+        msg: "SSH config updated — {{ bastion_hostname }} will use IdentitiesOnly yes"
+
+# Step 2: Verify bastion connectivity and run prerequisites role.
+- name: "Phase 00 — Prerequisites"
+  hosts: bastion
+  gather_facts: true
+  vars_files:
+    - "{{ playbook_dir }}/../inventory/group_vars/all/vars.yml"
+  roles:
+    - role: prerequisites

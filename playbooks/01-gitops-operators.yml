@@ -1,0 +1,9 @@
+---
+# 01-gitops-operators.yml — Install Operator prerequisites via OpenShift GitOps.
+- name: "Phase 01 — Install Operator Prerequisites (GitOps)"
+  hosts: bastion
+  gather_facts: false
+  vars_files:
+    - "{{ playbook_dir }}/../inventory/group_vars/all/vars.yml"
+  roles:
+    - role: gitops-operators

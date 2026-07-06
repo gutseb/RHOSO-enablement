@@ -1,0 +1,9 @@
+---
+# 02-rhoso-operators.yml — Install RHOSO Service Operators via OpenShift GitOps.
+- name: "Phase 02 — Install RHOSO Operators (GitOps)"
+  hosts: bastion
+  gather_facts: false
+  vars_files:
+    - "{{ playbook_dir }}/../inventory/group_vars/all/vars.yml"
+  roles:
+    - role: rhoso-operators

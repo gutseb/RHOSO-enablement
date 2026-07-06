@@ -1,0 +1,139 @@
+---
+# =============================================================================
+# RHOSO Lab — Public Variables
+# Edit the REPLACE_WITH_* values for your specific lab instance.
+# This file IS committed to git — no secrets here.
+# Secrets go in vault.yml (see vault_template.yml and setup-vault.sh).
+# =============================================================================
+
+# ── Lab Identity ──────────────────────────────────────────────────────────────
+# Your unique lab GUID — from the lab portal Overview tab (e.g. 8mdhj).
+# Parameterises all URLs and key names.
+lab_guid: "REPLACE_WITH_YOUR_LAB_GUID"
+
+# Your GitHub username — used to construct your fork URL
+github_id: "REPLACE_WITH_YOUR_GITHUB_ID"
+
+# ── Bastion Access ────────────────────────────────────────────────────────────
+# From the lab portal Overview tab — the SSH command shows: ssh lab-user@<hostname> -p <port>
+bastion_user: "lab-user"
+bastion_hostname: "REPLACE_WITH_YOUR_BASTION_HOSTNAME"
+bastion_port: "REPLACE_WITH_YOUR_BASTION_PORT"
+
+# Lab SSH key generated per GUID (lives on the bastion)
+bastion_ssh_key_path: "/home/{{ bastion_user }}/.ssh/{{ lab_guid }}key.pem"
+bastion_ssh_pub_key_path: "/home/{{ bastion_user }}/.ssh/{{ lab_guid }}key.pub"
+
+# ── OpenShift ─────────────────────────────────────────────────────────────────
+ocp_console_url: "https://console-openshift-console.apps.cluster-{{ lab_guid }}.dyn.redhatworkshops.io"
+ocp_api_url: "https://api.cluster-{{ lab_guid }}.dyn.redhatworkshops.io:6443"
+ocp_admin_user: "admin"
+
+# ── GitHub / GitOps ───────────────────────────────────────────────────────────
+lab_repo_name: "showroom_osp-on-ocp-day2"
+lab_repo_ssh_url: "git@github.com:{{ github_id }}/{{ lab_repo_name }}.git"
+lab_repo_local_path: "~/labrepo"
+
+# ── RHOSO Namespaces ─────────────────────────────────────────────────────────
+openstack_operators_namespace: "openstack-operators"
+openstack_namespace: "openstack"
+rhoso_gitops_namespace: "openshift-gitops"
+
+# Working directory on the bastion where generated files are placed
+files_directory: "openstack-files"
+
+# ── Network Configuration ─────────────────────────────────────────────────────
+networks:
+  ctlplane:
+    cidr: "172.22.0.0/24"
+    allocation_range_start: "172.22.0.100"
+    allocation_range_end: "172.22.0.120"
+    allocation_range2_start: "172.22.0.150"
+    allocation_range2_end: "172.22.0.200"
+    metallb_range_start: "172.22.0.80"
+    metallb_range_end: "172.22.0.90"
+    ipam_range_start: "172.22.0.30"
+    ipam_range_end: "172.22.0.70"
+    nncp_range_start: "172.22.0.10"
+    nncp_range_end: "172.22.0.12"
+
+  external:
+    cidr: "172.21.0.0/24"
+    allocation_range_start: "172.21.0.61"
+    allocation_range_end: "172.21.0.90"
+
+  internalapi:
+    vlan: 20
+    cidr: "172.17.0.0/24"
+    allocation_range_start: "172.17.0.100"
+    allocation_range_end: "172.17.0.250"
+    metallb_range_start: "172.17.0.80"
+    metallb_range_end: "172.17.0.90"
+    ipam_range_start: "172.17.0.30"
+    ipam_range_end: "172.17.0.70"
+    nncp_range_start: "172.17.0.10"
+    nncp_range_end: "172.17.0.12"
+
+  storage:
+    vlan: 21
+    cidr: "172.18.0.0/24"
+    allocation_range_start: "172.18.0.100"
+    allocation_range_end: "172.18.0.250"
+    metallb_range_start: "172.18.0.80"
+    metallb_range_end: "172.18.0.90"
+    ipam_range_start: "172.18.0.30"
+    ipam_range_end: "172.18.0.70"
+    nncp_range_start: "172.18.0.10"
+    nncp_range_end: "172.18.0.12"
+
+  tenant:
+    vlan: 22
+    cidr: "172.19.0.0/24"
+    allocation_range_start: "172.19.0.100"
+    allocation_range_end: "172.19.0.250"
+    metallb_range_start: "172.19.0.80"
+    metallb_range_end: "172.19.0.90"
+    ipam_range_start: "172.19.0.30"
+    ipam_range_end: "172.19.0.70"
+    nncp_range_start: "172.19.0.10"
+    nncp_range_end: "172.19.0.12"
+
+# ── NFS ───────────────────────────────────────────────────────────────────────
+nfs_server_hostname: "nfsserver"
+nfs_server_ip: "172.18.0.13"
+nfs_cinder_path: "/nfs/cinder"
+nfs_glance_path: "/nfs/glance"
+nfs_aap_path: "/nfs/aap"
+
+# ── Compute Nodes ─────────────────────────────────────────────────────────────
+compute_nodes:
+  - name: "edpm-compute-1"
+    hostname: "edpm-compute-1.sandbox-{{ lab_guid }}-ocp4-cluster.svc.cluster.local"
+    ansible_host: "172.22.0.100"
+    ctlplane_ip: "172.22.0.100"
+    internalapi_ip: "172.17.0.100"
+    storage_ip: "172.18.0.100"
+    tenant_ip: "172.19.0.100"
+    external_ip: "172.21.0.100"
+
+# ── OCP Worker External IPs (NNCP / kustomize patches) ───────────────────────
+rhoso_external_ip_worker_1: "172.21.0.21"
+rhoso_external_ip_worker_2: "172.21.0.22"
+rhoso_external_ip_worker_3: "172.21.0.23"
+rhoso_external_ip_bastion: "172.21.0.50"
+
+# ── Lab Portal Variables (from the Details tab) ───────────────────────────────
+# These are provided per-student in the lab portal Details tab as export statements.
+# Run:  bash setup-lab-vars.sh   (paste your export block, then Ctrl+D)
+# Used for later OpenStack operator phases (floating IPs, public network, migration).
+external_ip_worker_1: "REPLACE_WITH_PORTAL_VALUE"
+external_ip_worker_2: "REPLACE_WITH_PORTAL_VALUE"
+external_ip_worker_3: "REPLACE_WITH_PORTAL_VALUE"
+external_ip_bastion:  "REPLACE_WITH_PORTAL_VALUE"
+public_net_start:     "REPLACE_WITH_PORTAL_VALUE"
+public_net_end:       "REPLACE_WITH_PORTAL_VALUE"
+conversion_host_ip:   "REPLACE_WITH_PORTAL_VALUE"
+
+# ── Timeouts (seconds) ────────────────────────────────────────────────────────
+operator_wait_timeout: 600
+deployment_wait_timeout: 1800

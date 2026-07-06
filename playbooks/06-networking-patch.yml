@@ -1,0 +1,24 @@
+---
+# 06-networking-patch.yml — PLACEHOLDER: Networking patch before data plane deployment.
+#
+# This phase may be required to correct network configuration after control plane
+# deployment and before data plane provisioning. Content to be added once the
+# specific networking issue is identified.
+#
+# Known scenarios this may address:
+#   - OVN/OVS bridge configuration on the compute node
+#   - VLAN or MTU corrections for the data-plane network
+#   - MetalLB or NodePort adjustments
+- name: "Phase 06 — Networking Patch (PLACEHOLDER)"
+  hosts: bastion
+  gather_facts: false
+  vars_files:
+    - "{{ playbook_dir }}/../inventory/group_vars/all/vars.yml"
+  tasks:
+    - name: "PLACEHOLDER — networking patch tasks go here"
+      ansible.builtin.debug:
+        msg: |
+          This phase is a placeholder for a networking patch that may be
+          required between control plane and data plane deployment.
+          Tasks will be added once the specific fix is identified.
+      tags: [networking_patch, placeholder]

@@ -1,0 +1,9 @@
+---
+# 05-control-plane.yml — Deploy RHOSO control plane via OpenShift GitOps (ArgoCD).
+- name: "Phase 05 — Deploy RHOSO Control Plane (GitOps)"
+  hosts: bastion
+  gather_facts: false
+  vars_files:
+    - "{{ playbook_dir }}/../inventory/group_vars/all/vars.yml"
+  roles:
+    - role: control-plane
