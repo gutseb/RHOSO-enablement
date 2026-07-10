@@ -100,6 +100,20 @@
 
 # ── Commit and push to GitHub ─────────────────────────────────────────────────
 
+# Standalone-runnable: don't rely on playbook 00 having configured the clone —
+# enforce the SSH remote and deploy key here before pushing.
+- name: Ensure labrepo origin uses the SSH URL
+  ansible.builtin.command:
+    cmd: git remote set-url origin {{ lab_repo_ssh_url }}
+    chdir: "{{ lab_repo_local_path }}"
+  changed_when: true
+
+- name: Ensure labrepo git uses the lab deploy key
+  ansible.builtin.command:
+    cmd: git config core.sshCommand "ssh -i {{ bastion_ssh_key_path }} -o StrictHostKeyChecking=accept-new"
+    chdir: "{{ lab_repo_local_path }}"
+  changed_when: true
+
 - name: Stage kustomize overlay files
   ansible.builtin.command:
     cmd: git add content/files/manifests/environments content/files/manifests/applications
@@ -127,6 +141,9 @@
   ansible.builtin.command:
     cmd: git push origin {{ lab_branch }}
     chdir: "{{ lab_repo_local_path }}"
+  environment:
+    # never prompt for credentials — fail so the guidance task can explain
+    GIT_TERMINAL_PROMPT: "0"
   register: git_push
   changed_when: "'Everything up-to-date' not in git_push.stderr"
   failed_when: false

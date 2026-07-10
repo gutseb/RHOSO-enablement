@@ -118,6 +118,16 @@ with write access**, or the push fails with an authentication error.
 - Add it here: `https://github.com/<your_github_id>/showroom_osp-on-ocp-day2/settings/keys`
 - GitHub reference: <https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys>
 
+Then load the lab **private key** into your ssh-agent on the bastion. The key
+file is named after your lab GUID — for example, with GUID `5mv5r` the file is
+`~/.ssh/5mv5rkey.pem`:
+
+```bash
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/<GUID>key.pem      # e.g. ssh-add ~/.ssh/5mv5rkey.pem
+# Identity added: /home/lab-user/.ssh/5mv5rkey.pem
+```
+
 ### Set up deploy keys (from the GitHub docs)
 
 1. Run the `ssh-keygen` procedure on your server, and remember where you save

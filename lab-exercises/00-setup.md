@@ -133,6 +133,16 @@ In your GitHub fork:
 
 ![Repository header showing the Settings tab](images/repo-actions-settings.webp)
 
+Then, on the bastion, load the lab **private key** into your ssh-agent. The
+key file is named after your lab GUID — for example, with GUID `5mv5r` the
+file is `~/.ssh/5mv5rkey.pem`:
+
+```bash
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/<GUID>key.pem      # e.g. ssh-add ~/.ssh/5mv5rkey.pem
+# Identity added: /home/lab-user/.ssh/5mv5rkey.pem
+```
+
 > Without this deploy key the control-plane (05) and data-plane (07) phases
 > fail at "Push overlay to GitHub". Reference:
 > <https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys>
