@@ -1,0 +1,13 @@
+---
+# data-plane role defaults — override in vars.yml or inventory
+
+# DNS server handed to the compute node's static ctlplane connection.
+# This is the DNS service published on the ctlplane MetalLB range.
+dataplane_dns_server: "172.22.0.89"
+
+# StorageClass for the openstack-dataplane-ansible-log PVC (lab cluster default).
+dataplane_logs_storage_class: "ocs-external-storagecluster-ceph-rbd-immediate"
+
+# Data plane deployments run Ansible against the compute nodes and can take
+# a long time — total wait budget in seconds.
+dataplane_wait_timeout: 3600

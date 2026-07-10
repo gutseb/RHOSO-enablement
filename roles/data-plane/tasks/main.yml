@@ -1,7 +1,201 @@
 ---
-# data-plane/tasks/main.yml — PLACEHOLDER
-# Tasks will be added as lab content is developed.
-- name: "PLACEHOLDER — data-plane tasks"
+# Deploys the RHOSO data plane via OpenShift GitOps (ArgoCD)
+# (upstream: gitops/deploy-data-plane-gitops.html).
+#
+# 1. Configures hostname and networking on the preprovisioned compute node
+#    (reached from the bastion via SSH, see inventory compute_nodes group).
+# 2. Renders the dataplane kustomize overlay from templates into the labrepo
+#    fork so the files can be audited, commits and pushes them.
+# 3. Deploys an ArgoCD Application pointing at the fork and waits for the
+#    OpenStackDataPlaneDeployment to complete.
+
+# ── Compute node hostname and networking ──────────────────────────────────────
+
+- name: Get current hostname on compute01
+  ansible.builtin.command: hostname
+  delegate_to: compute01
+  register: compute_current_hostname
+  changed_when: false
+
+- name: Set compute01 hostname
+  ansible.builtin.command: hostnamectl set-hostname {{ compute_nodes[0].hostname }}
+  delegate_to: compute01
+  become: true
+  when: compute_current_hostname.stdout != compute_nodes[0].hostname
+
+- name: List existing NetworkManager connections on compute01
+  ansible.builtin.command: nmcli -g NAME connection show
+  delegate_to: compute01
+  become: true
+  register: nm_connections
+  changed_when: false
+
+- name: Add static ctlplane connection (static-eth1)
+  ansible.builtin.command: >
+    nmcli con add con-name "static-eth1" ifname eth1 type ethernet
+    ip4 {{ compute_nodes[0].ctlplane_ip }}/24 ipv4.dns "{{ dataplane_dns_server }}"
+  delegate_to: compute01
+  become: true
+  when: "'static-eth1' not in nm_connections.stdout_lines"
+  register: eth1_added
+
+- name: Bring up static-eth1
+  ansible.builtin.command: nmcli con up "static-eth1"
+  delegate_to: compute01
+  become: true
+  when: eth1_added is changed
+
+- name: Add DHCP connection for eth0 (eth0-dhcp)
+  ansible.builtin.command: >
+    nmcli con add type ethernet ifname eth0 con-name eth0-dhcp
+    ipv4.method auto ipv6.method ignore
+  delegate_to: compute01
+  become: true
+  when: "'eth0-dhcp' not in nm_connections.stdout_lines"
+  register: eth0_added
+
+- name: Bring up eth0-dhcp
+  ansible.builtin.command: nmcli con up eth0-dhcp
+  delegate_to: compute01
+  become: true
+  when: eth0_added is changed
+
+- name: Pin eth0-dhcp stable-id (convergent)
+  ansible.builtin.command: nmcli con mod eth0-dhcp connection.stable-id "user-set"
+  delegate_to: compute01
+  become: true
+  changed_when: false
+
+# ── Dataplane kustomize overlay (rendered into the labrepo fork) ──────────────
+
+- name: Set manifests directory path
+  ansible.builtin.set_fact:
+    manifests_dir: "{{ lab_repo_local_path }}/content/files/manifests"
+
+- name: Create environments/demo-env/dataplane directory
+  ansible.builtin.file:
+    path: "{{ manifests_dir }}/environments/demo-env/dataplane"
+    state: directory
+    mode: '0755'
+
+- name: Render dataplane overlay files from templates
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ manifests_dir }}/environments/demo-env/dataplane/{{ item }}"
+    mode: '0644'
+  loop:
+    - kustomization.yaml
+    - patch-nodeset-nodes.yaml
+    - patch-nodeset-ansible.yaml
+    - patch-pvc-storageclass.yaml
+
+- name: Validate dataplane overlay can be built
+  ansible.builtin.command:
+    cmd: kustomize build environments/demo-env/dataplane
+    chdir: "{{ manifests_dir }}"
+  register: dataplane_kustomize_build
+  changed_when: false
+
+- name: Create applications/rhoso directory
+  ansible.builtin.file:
+    path: "{{ manifests_dir }}/applications/rhoso"
+    state: directory
+    mode: '0755'
+
+- name: Render ArgoCD Application manifest
+  ansible.builtin.template:
+    src: application-environment-demo-env-dataplane.yaml.j2
+    dest: "{{ manifests_dir }}/applications/rhoso/application-environment-demo-env-dataplane.yaml"
+    mode: '0644'
+
+# ── Run artifacts (copies of everything this run rendered) ────────────────────
+
+- name: Create artifacts directory for this phase
+  ansible.builtin.file:
+    path: "{{ render_artifacts_dir }}/07-data-plane"
+    state: directory
+    mode: '0755'
+
+- name: Copy rendered files to artifacts
+  ansible.builtin.copy:
+    src: "{{ manifests_dir }}/{{ item }}"
+    dest: "{{ render_artifacts_dir }}/07-data-plane/{{ item | basename }}"
+    remote_src: true
+    mode: '0644'
+  loop:
+    - "environments/demo-env/dataplane/kustomization.yaml"
+    - "environments/demo-env/dataplane/patch-nodeset-nodes.yaml"
+    - "environments/demo-env/dataplane/patch-nodeset-ansible.yaml"
+    - "environments/demo-env/dataplane/patch-pvc-storageclass.yaml"
+    - "applications/rhoso/application-environment-demo-env-dataplane.yaml"
+  loop_control:
+    label: "{{ item | basename }}"
+
+# ── Commit and push to GitHub ─────────────────────────────────────────────────
+
+- name: Stage dataplane overlay files
+  ansible.builtin.command:
+    cmd: git add content/files/manifests/environments content/files/manifests/applications
+    chdir: "{{ lab_repo_local_path }}"
+  changed_when: true
+
+- name: Commit dataplane overlay
+  ansible.builtin.command:
+    cmd: >
+      git commit -m "Add dataplane kustomize overlay and ArgoCD application for {{ lab_guid }}"
+    chdir: "{{ lab_repo_local_path }}"
+  register: git_commit
+  changed_when: git_commit.rc == 0
+  # git reports a clean tree as "nothing to commit" (no changes at all) or
+  # "nothing added to commit" (only untracked files present) — both are OK
+  failed_when: >-
+    git_commit.rc != 0
+    and 'nothing to commit' not in git_commit.stdout
+    and 'nothing added to commit' not in git_commit.stdout
+
+- name: Push overlay to GitHub
+  ansible.builtin.command:
+    cmd: git push origin {{ lab_branch }}
+    chdir: "{{ lab_repo_local_path }}"
+  register: git_push
+  changed_when: git_push.rc == 0
+  when: git_commit.rc == 0
+
+# ── Deploy via ArgoCD ─────────────────────────────────────────────────────────
+
+- name: Deploy dataplane ArgoCD Application
+  ansible.builtin.command: >
+    oc create --save-config -f
+    {{ manifests_dir }}/applications/rhoso/application-environment-demo-env-dataplane.yaml
+  register: argocd_app_create
+  changed_when: argocd_app_create.rc == 0
+  failed_when: argocd_app_create.rc != 0 and 'AlreadyExists' not in argocd_app_create.stderr
+
+- name: Wait for ArgoCD Application to become Healthy
+  ansible.builtin.command: >
+    oc wait --timeout=600s -n {{ rhoso_gitops_namespace }}
+    applications.argoproj.io/environment-rhoso-demo-env-dataplane
+    --for jsonpath='{.status.health.status}'=Healthy
+  register: argocd_health_wait
+  changed_when: false
+
+- name: Wait for the OpenStackDataPlaneDeployment to complete
+  ansible.builtin.command: >
+    oc get openstackdataplanedeployment data-plane-deploy
+    -n {{ openstack_namespace }}
+    -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+  register: dataplane_ready
+  until: dataplane_ready.stdout == "True"
+  retries: "{{ ((dataplane_wait_timeout | int) / 30) | int }}"
+  delay: 30
+  changed_when: false
+
+- name: Display data plane status
+  ansible.builtin.command: >
+    oc get openstackdataplanenodeset,openstackdataplanedeployment -n {{ openstack_namespace }}
+  register: dp_status
+  changed_when: false
+
+- name: Show data plane status
   ansible.builtin.debug:
-    msg: "Phase tasks for role 'data-plane' are not yet implemented. Paste lab content to proceed."
-  tags: [placeholder]
+    var: dp_status.stdout_lines

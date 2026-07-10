@@ -1,4 +1,4 @@
 ---
 # prerequisites role defaults — override in vars.yml or inventory
-lab_repo_local_path: "~/labrepo"
+lab_repo_local_path: "/home/{{ bastion_user }}/labrepo"
 ocp_admin_user: "admin"

@@ -1,0 +1,81 @@
+# Rendered by RHOSO-enablement role: networking-patch
+# Source of truth: labrepo content/files/osp-ng-nncp-w{{ item.number }}.yaml (UUID and
+# EXTERNAL_IP_WORKER_{{ item.number }} placeholders replaced from inventory variables).
+# Worker {{ item.number }} — per-network host octet .{{ 9 + (item.number | int) }} matches the OCP worker
+# nncp range ({{ networks.ctlplane.nncp_range_start }} - {{ networks.ctlplane.nncp_range_end }}).
+{% set octet = 9 + (item.number | int) %}
+apiVersion: nmstate.io/v1
+kind: NodeNetworkConfigurationPolicy
+metadata:
+  name: osp-multi-nic-worker-ocp4-worker{{ item.number }}
+spec:
+  desiredState:
+    interfaces:
+    - description: Configuring internalapi enp4s0
+      ipv4:
+        address:
+        - ip: {{ networks.internalapi.cidr | regex_replace('\.0/24$', '') }}.{{ octet }}
+          prefix-length: 24
+        enabled: true
+        dhcp: false
+      ipv6:
+        enabled: false
+      mtu: 1500
+      name: enp4s0
+      state: up
+      type: ethernet
+    - description: Configuring storage enp5s0
+      ipv4:
+        address:
+        - ip: {{ networks.storage.cidr | regex_replace('\.0/24$', '') }}.{{ octet }}
+          prefix-length: 24
+        enabled: true
+        dhcp: false
+      ipv6:
+        enabled: false
+      mtu: 1500
+      name: enp5s0
+      state: up
+      type: ethernet
+    - description: Configuring tenat enp6s0
+      ipv4:
+        address:
+        - ip: {{ networks.tenant.cidr | regex_replace('\.0/24$', '') }}.{{ octet }}
+          prefix-length: 24
+        enabled: true
+        dhcp: false
+      ipv6:
+        enabled: false
+      mtu: 1500
+      name: enp6s0
+      state: up
+      type: ethernet
+    - description: Configuring external enp8s0
+      ipv4:
+        address:
+        - ip: {{ item.external_ip }}
+          prefix-length: 16
+        enabled: true
+        dhcp: false
+      ipv6:
+        enabled: false
+      mtu: 1500
+      name: enp8s0
+      state: up
+      type: ethernet
+    - description: Configuring ctlplane enp3s0
+      ipv4:
+        address:
+        - ip: {{ networks.ctlplane.cidr | regex_replace('\.0/24$', '') }}.{{ octet }}
+          prefix-length: 24
+        enabled: true
+        dhcp: false
+      ipv6:
+        enabled: false
+      mtu: 1500
+      name: enp3s0
+      state: up
+      type: ethernet
+  nodeSelector:
+    kubernetes.io/hostname: control-plane-cluster-{{ lab_guid }}-{{ item.number }}
+    node-role.kubernetes.io/worker: ""

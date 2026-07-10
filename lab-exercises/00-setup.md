@@ -2,21 +2,37 @@
 
 ## Overview
 
-Before starting the lab exercises, complete this one-time setup on your **local
-machine** (the machine where you run Ansible). These steps configure SSH access,
-your GitHub fork, and the Ansible vault for secrets.
+This lab uses two repositories:
+
+| Repository | Purpose | What you do |
+|---|---|---|
+| `rh-osp-demo/showroom_osp-on-ocp-day2` | Lab content — kustomize overlays and ArgoCD manifests | **Fork** into your GitHub account |
+| `gutseb/RHOSO-enablement` | Ansible automation that drives the lab | **Clone** directly — no fork needed |
+
+The automation commits your environment-specific kustomize overlays to a branch
+named `lab-<YOUR_GUID>` in **your fork** of the showroom repo. The RHOSO-enablement
+repo is shared and never modified by students.
+
+Complete the steps below on your **local machine** (the machine where you run Ansible).
 
 ---
 
-## Step 1 — Fork the Lab Repository
+## Step 1 — Fork the Showroom Lab Repository
 
-Fork the lab repository into your personal GitHub space:
+Fork the **showroom** repository into your personal GitHub space — this is where
+your environment-specific kustomize overlays and ArgoCD manifests will live:
 
 ```
 https://github.com/rh-osp-demo/showroom_osp-on-ocp-day2
 ```
 
 > Click **Fork** in the top-right corner and select your personal account.
+
+The automation will create a branch **`lab-<YOUR_GUID>`** in your fork
+(e.g. `lab-8mdhj`) and push all generated manifests there. If you need to start
+over with a new lab environment, update `lab_guid` in `vars.yml` and re-run
+Phase 00 — a fresh branch is created from `main` and your previous branch is
+left untouched.
 
 ---
 
@@ -117,13 +133,12 @@ In your GitHub fork:
 
 ---
 
-## Step 6 — Clone This Automation Repository Locally
+## Step 6 — Clone the Automation Repository Locally
 
-Set your GitHub username as a shell variable, then clone:
+Clone the RHOSO-enablement automation repo directly — no fork required:
 
 ```bash
-export YOUR_GITHUB_ID=pnavarro   # replace with your GitHub username
-git clone https://github.com/${YOUR_GITHUB_ID}/RHOSO-enablement.git
+git clone https://github.com/gutseb/RHOSO-enablement.git
 cd RHOSO-enablement
 ```
 

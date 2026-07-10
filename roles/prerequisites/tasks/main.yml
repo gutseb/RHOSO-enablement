@@ -95,6 +95,13 @@
     - { key: "user.name", value: "Lab User {{ lab_guid }}" }
   changed_when: true
 
+- name: Create and checkout lab branch ({{ lab_branch }})
+  ansible.builtin.shell: |
+    git checkout {{ lab_branch }} 2>/dev/null || git checkout -b {{ lab_branch }}
+  args:
+    chdir: "{{ lab_repo_local_path }}"
+  changed_when: true
+
 - name: Display lab environment summary
   ansible.builtin.debug:
     msg:

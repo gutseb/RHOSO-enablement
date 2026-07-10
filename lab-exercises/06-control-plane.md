@@ -23,8 +23,8 @@ This playbook:
 
 1. Creates `environments/base/kustomization.yaml` referencing the upstream base
 2. Creates `environments/demo-env/controlplane/kustomization.yaml` with NNCP and NetConfig patches for your `lab_guid`
-3. Creates the ArgoCD `Application` manifest pointing at your fork
-4. Commits and pushes both files to your GitHub fork
+3. Creates the ArgoCD `Application` manifest pointing at your fork on branch `lab-<lab_guid>`
+4. Commits and pushes both files to your fork on branch `lab-<lab_guid>`
 5. Deploys the ArgoCD Application
 6. Waits up to 30 minutes for the control plane to reach `Ready=True`
 
@@ -45,6 +45,13 @@ The `openstacknetconfig` resource is patched with the correct DNS domain suffix 
 your cluster: `<network>.sandbox-<lab_guid>-ocp4-cluster.svc.cluster.local`
 
 ## Manual Steps (reference)
+
+Set these shell variables once before running any of the commands below:
+
+```bash
+export LAB_GUID=8mdhj            # your lab GUID
+export YOUR_GITHUB_ID=pnavarro   # your GitHub username
+```
 
 ### Create the kustomize base
 
@@ -80,7 +87,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - ../../base/controlplane
+  - ../../../base/controlplane
 
 patches:
   - target:
@@ -97,7 +104,7 @@ patches:
         value: "control-plane-cluster-<lab_guid>-1"
       - op: replace
         path: /spec/desiredState/interfaces/3/ipv4/address/0/ip
-        value: "<rhoso_external_ip_worker_1>"
+        value: "<external_ip_worker_1 from the lab portal Details tab>"
   # ... (repeat for worker2 and worker3)
 ```
 
@@ -126,15 +133,15 @@ spec:
   project: default
   source:
     path: content/files/manifests/environments/demo-env/controlplane/
-    repoURL: https://github.com/YOUR_GITHUB_ID/showroom_osp-on-ocp-day2.git
-    targetRevision: HEAD
+    repoURL: https://github.com/${YOUR_GITHUB_ID}/showroom_osp-on-ocp-day2.git
+    targetRevision: lab-${LAB_GUID}
   syncPolicy:
     automated: {}
 EOF
 
 git add .
-git commit -m "Base and demo-env environment controlplane"
-git push origin
+git commit -m "Add control plane overlay for lab-${LAB_GUID}"
+git push origin lab-${LAB_GUID}
 
 oc create --save-config -f applications/rhoso/application-environment-demo-env-controlplane.yaml
 ```

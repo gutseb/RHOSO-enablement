@@ -20,6 +20,12 @@ id_ed25519
 # Reference clones (local only — not part of the project)
 reference/
 
+# Per-run rendered file copies (env-specific values — audit locally, don't commit)
+artifacts/
+
+# Local AI-assistant context — not part of the enablement deliverable
+CLAUDE.md
+
 # Editor / OS
 .DS_Store
 *.swp

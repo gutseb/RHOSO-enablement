@@ -4,6 +4,13 @@ Ansible automation and lab exercises for the **Red Hat OpenStack Services on Ope
 
 This repo automates the initial RHOSO deployment so students can focus on day-2 operational exercises without spending the full session on installation.
 
+## Repositories
+
+| Repository | Purpose | Action |
+|---|---|---|
+| `rh-osp-demo/showroom_osp-on-ocp-day2` | Lab content — kustomize overlays, ArgoCD manifests | **Fork** into your GitHub account |
+| `gutseb/RHOSO-enablement` _(this repo)_ | Ansible automation that drives the lab | **Clone** directly |
+
 ## Lab Topics
 
 | # | Topic | Playbook | Exercise |
@@ -20,15 +27,17 @@ This repo automates the initial RHOSO deployment so students can focus on day-2 
 
 ## Quick Start
 
-### 1. Fork the Lab Repo
+### 1. Fork the Showroom Repo
 
 Fork `https://github.com/rh-osp-demo/showroom_osp-on-ocp-day2` into your GitHub account.
+This is where your environment-specific manifests will be pushed.
 
-### 2. Clone This Repo
+### 2. Clone This Automation Repo
+
+No fork needed — clone directly:
 
 ```bash
-export YOUR_GITHUB_ID=pnavarro   # replace with your GitHub username
-git clone https://github.com/${YOUR_GITHUB_ID}/RHOSO-enablement.git
+git clone https://github.com/gutseb/RHOSO-enablement.git
 cd RHOSO-enablement
 ```
 

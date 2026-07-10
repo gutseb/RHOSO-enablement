@@ -45,20 +45,26 @@ while IFS= read -r line || [[ -n "${line:-}" ]]; do
 
         # Map portal export name → Ansible variable name
         case "$key" in
-            EXTERNAL_IP_WORKER_1) ansible_var="rhoso_external_ip_worker_1" ;;
-            EXTERNAL_IP_WORKER_2) ansible_var="rhoso_external_ip_worker_2" ;;
-            EXTERNAL_IP_WORKER_3) ansible_var="rhoso_external_ip_worker_3" ;;
-            EXTERNAL_IP_BASTION)  ansible_var="rhoso_external_ip_bastion"  ;;
-            PUBLIC_NET_START)     ansible_var="public_net_start"            ;;
-            PUBLIC_NET_END)       ansible_var="public_net_end"              ;;
-            CONVERSION_HOST_IP)   ansible_var="conversion_host_ip"          ;;
+            EXTERNAL_IP_WORKER_1) ansible_var="external_ip_worker_1" ;;
+            EXTERNAL_IP_WORKER_2) ansible_var="external_ip_worker_2" ;;
+            EXTERNAL_IP_WORKER_3) ansible_var="external_ip_worker_3" ;;
+            EXTERNAL_IP_BASTION)  ansible_var="external_ip_bastion"  ;;
+            PUBLIC_NET_START)     ansible_var="public_net_start"      ;;
+            PUBLIC_NET_END)       ansible_var="public_net_end"        ;;
+            CONVERSION_HOST_IP)   ansible_var="conversion_host_ip"    ;;
             *) continue ;;
         esac
 
-        # Replace the variable line in vars.yml (preserves indentation-free top-level vars)
+        # Replace the variable line in vars.yml (top-level vars only)
         sed -i "s|^${ansible_var}:.*|${ansible_var}: \"${value}\"|" "$VARS_FILE"
-        echo "  Set: ${ansible_var} = ${value}"
-        ((UPDATED++)) || true
+
+        # sed exits 0 even when nothing matched — confirm the line now exists
+        if grep -qE "^${ansible_var}: \"${value}\"" "$VARS_FILE"; then
+            echo "  Set: ${ansible_var} = ${value}"
+            ((UPDATED++)) || true
+        else
+            echo "  WARNING: ${ansible_var} not found in ${VARS_FILE} — add it manually"
+        fi
     fi
 done
 
@@ -74,5 +80,5 @@ else
     echo "Updated ${UPDATED} variable(s) in ${VARS_FILE}"
     echo ""
     echo "Verify:"
-    grep -E 'rhoso_external_ip|public_net_start|public_net_end|conversion_host_ip' "$VARS_FILE"
+    grep -E '^(external_ip_|public_net_|conversion_host_ip)' "$VARS_FILE"
 fi

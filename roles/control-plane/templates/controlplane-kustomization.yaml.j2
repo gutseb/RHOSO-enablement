@@ -1,0 +1,37 @@
+# Rendered by RHOSO-enablement role: control-plane
+# demo-env controlplane overlay — patches the NNCP names/hostnames/external IPs
+# for lab {{ lab_guid }} and the NetConfig DNS domains.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../../base/controlplane
+
+patches:
+{% for worker in [1, 2, 3] %}
+  - target:
+      group: nmstate.io
+      version: v1
+      kind: NodeNetworkConfigurationPolicy
+      name: osp-multi-nic-worker-ocp4-worker{{ worker }}
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: "control-plane-cluster-{{ lab_guid }}-{{ worker }}"
+      - op: replace
+        path: /spec/nodeSelector/kubernetes.io~1hostname
+        value: "control-plane-cluster-{{ lab_guid }}-{{ worker }}"
+      - op: replace
+        path: /spec/desiredState/interfaces/3/ipv4/address/0/ip
+        value: "{{ lookup('vars', 'external_ip_worker_' ~ worker) }}"
+
+{% endfor %}
+  - target:
+      kind: NetConfig
+      name: openstacknetconfig
+    patch: |-
+{% for net in ['ctlplane', 'internalapi', 'tenant', 'storage', 'external'] %}
+      - op: replace
+        path: /spec/networks/{{ loop.index0 }}/dnsDomain
+        value: {{ net }}.sandbox-{{ lab_guid }}-ocp4-cluster.svc.cluster.local
+{% endfor %}

@@ -1,0 +1,31 @@
+# Rendered by RHOSO-enablement role: data-plane
+# Adds each compute node from inventory (compute_nodes in vars.yml) to the
+# preprovisioned-nodeset.
+{% for node in compute_nodes %}
+- op: add
+  path: /spec/nodes/{{ node.name }}
+  value:
+    hostName: {{ node.hostname }}
+    networks:
+    - name: ctlplane
+      subnetName: subnet1
+      defaultRoute: false
+      fixedIP: {{ node.ctlplane_ip }}
+    - name: internalapi
+      subnetName: subnet1
+      fixedIP: {{ node.internalapi_ip }}
+    - name: storage
+      subnetName: subnet1
+      fixedIP: {{ node.storage_ip }}
+    - name: tenant
+      subnetName: subnet1
+      fixedIP: {{ node.tenant_ip }}
+    - name: external
+      subnetName: subnet1
+      fixedIP: {{ node.external_ip }}
+    ansible:
+      ansibleHost: {{ node.ansible_host }}
+      ansibleUser: cloud-user
+      ansibleVars:
+        fqdn_internal_api: {{ node.hostname }}
+{% endfor %}

@@ -1,7 +1,107 @@
 ---
-# networking-patch/tasks/main.yml — PLACEHOLDER
-# Tasks will be added as lab content is developed.
-- name: "PLACEHOLDER — networking-patch tasks"
+# Prepares RHOCP networking for RHOSO before data plane deployment
+# (upstream: connected/network-isolation.html).
+#
+# NNCP manifests are rendered from templates into {{ network_patch_render_dir }}
+# on the bastion so they can be audited, then applied with oc. The
+# net-attach-def, MetalLB IPAddressPools, and L2Advertisements are applied
+# directly from the labrepo files (they contain no per-lab placeholders).
+
+- name: Assert lab portal external IP variables are set
+  ansible.builtin.assert:
+    that:
+      - external_ip_worker_1 is defined
+      - external_ip_worker_1 != "REPLACE_WITH_PORTAL_VALUE"
+      - external_ip_worker_2 is defined
+      - external_ip_worker_2 != "REPLACE_WITH_PORTAL_VALUE"
+      - external_ip_worker_3 is defined
+      - external_ip_worker_3 != "REPLACE_WITH_PORTAL_VALUE"
+    fail_msg: >-
+      Fill the lab portal Details-tab values (external_ip_worker_1/2/3) in
+      inventory/group_vars/all/vars.yml before running this phase.
+
+# ── Render and apply the worker NNCPs ─────────────────────────────────────────
+
+- name: Create render directory for network isolation manifests
+  ansible.builtin.file:
+    path: "{{ network_patch_render_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Render NNCP manifests for the OCP workers
+  ansible.builtin.template:
+    src: osp-ng-nncp-worker.yaml.j2
+    dest: "{{ network_patch_render_dir }}/osp-ng-nncp-w{{ item.number }}.yaml"
+    mode: '0644'
+  loop:
+    - { number: 1, external_ip: "{{ external_ip_worker_1 }}" }
+    - { number: 2, external_ip: "{{ external_ip_worker_2 }}" }
+    - { number: 3, external_ip: "{{ external_ip_worker_3 }}" }
+  loop_control:
+    label: "osp-ng-nncp-w{{ item.number }}.yaml ({{ item.external_ip }})"
+
+- name: Show where the rendered NNCP manifests can be audited
   ansible.builtin.debug:
-    msg: "Phase tasks for role 'networking-patch' are not yet implemented. Paste lab content to proceed."
-  tags: [placeholder]
+    msg: "Rendered NNCP manifests: {{ network_patch_render_dir }}/osp-ng-nncp-w{1,2,3}.yaml"
+
+- name: Apply the worker NNCPs
+  ansible.builtin.command: >
+    oc apply -f {{ network_patch_render_dir }}/osp-ng-nncp-w{{ item }}.yaml
+  loop: [1, 2, 3]
+  register: nncp_apply
+  changed_when: "'created' in nncp_apply.stdout or 'configured' in nncp_apply.stdout"
+
+- name: Wait for NNCPs to reach SuccessfullyConfigured
+  ansible.builtin.command: >
+    oc get nncp osp-multi-nic-worker-ocp4-worker{{ item }}
+    -o jsonpath='{.status.conditions[?(@.type=="Available")].reason}'
+  loop: [1, 2, 3]
+  register: nncp_state
+  until: nncp_state.stdout == "SuccessfullyConfigured"
+  retries: "{{ nncp_wait_retries }}"
+  delay: "{{ nncp_wait_delay }}"
+  changed_when: false
+
+# ── net-attach-def and MetalLB (labrepo files, no placeholders) ───────────────
+
+- name: Apply NetworkAttachmentDefinitions for the isolated networks
+  ansible.builtin.command: >
+    oc apply -f {{ lab_repo_local_path }}/content/files/osp-ng-netattach.yaml
+  register: netattach_apply
+  changed_when: "'created' in netattach_apply.stdout or 'configured' in netattach_apply.stdout"
+
+- name: Apply MetalLB IPAddressPools
+  ansible.builtin.command: >
+    oc apply -f {{ lab_repo_local_path }}/content/files/osp-ng-metal-lb-ip-address-pools.yaml
+  register: metallb_pools_apply
+  changed_when: "'created' in metallb_pools_apply.stdout or 'configured' in metallb_pools_apply.stdout"
+
+- name: Apply MetalLB L2Advertisements
+  ansible.builtin.command: >
+    oc apply -f {{ lab_repo_local_path }}/content/files/osp-ng-metal-lb-l2-advertisements.yaml
+  register: metallb_l2_apply
+  changed_when: "'created' in metallb_l2_apply.stdout or 'configured' in metallb_l2_apply.stdout"
+
+# ── Global IP forwarding ──────────────────────────────────────────────────────
+
+- name: Check current cluster ipForwarding setting
+  ansible.builtin.command: >
+    oc get network.operator cluster
+    -o jsonpath={.spec.defaultNetwork.ovnKubernetesConfig.gatewayConfig.ipForwarding}
+  register: ipforward_check
+  changed_when: false
+
+- name: Enable global IP forwarding on the cluster network
+  ansible.builtin.command: >
+    oc patch network.operator cluster --type=merge
+    -p '{"spec":{"defaultNetwork":{"ovnKubernetesConfig":{"gatewayConfig":{"ipForwarding":"Global"}}}}}'
+  when: ipforward_check.stdout != "Global"
+
+- name: Display network isolation summary
+  ansible.builtin.debug:
+    msg:
+      - "NNCP w1/w2/w3         : SuccessfullyConfigured"
+      - "net-attach-def        : {{ 'changed' if netattach_apply.changed else 'unchanged' }}"
+      - "MetalLB pools         : {{ 'changed' if metallb_pools_apply.changed else 'unchanged' }}"
+      - "MetalLB L2 adverts    : {{ 'changed' if metallb_l2_apply.changed else 'unchanged' }}"
+      - "ipForwarding          : Global"

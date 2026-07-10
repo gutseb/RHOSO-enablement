@@ -1,0 +1,25 @@
+---
+# openstack-access role defaults — override in vars.yml or inventory
+
+# Shorthand for running commands inside the openstackclient pod
+openstackclient_rsh: "oc rsh -n {{ openstack_namespace }} openstackclient"
+
+# Public (provider) network — the lab's external 192.168.0.0/16 network
+openstack_gateway: "192.168.0.1"
+public_network_cidr: "192.168.0.0/16"
+
+# Private tenant network for the test VM
+private_network_cidr: "10.0.0.0/24"
+
+# Test VM bits (names follow the lab page)
+test_flavor_name: "tiny"
+test_image_name: "cirros"
+cirros_image_file: "cirros-0.6.2-x86_64-disk.img"
+cirros_image_url: "https://github.com/cirros-dev/cirros/releases/download/0.6.2/cirros-0.6.2-x86_64-disk.img"
+test_keypair_name: "default"
+test_secgroup_name: "basic"
+test_server_name: "test-server"
+
+# How long to wait for the test VM to answer ping on its floating IP
+vm_ping_retries: 20
+vm_ping_delay: 15

@@ -1,0 +1,10 @@
+---
+# networking-patch role defaults — override in vars.yml or inventory
+
+# Where rendered manifests are written so the user can audit them
+# before/after they are applied (applied directly from here).
+network_patch_render_dir: "{{ render_artifacts_dir }}/06-networking-patch"
+
+# NNCP convergence wait: retries x delay = 5 minutes
+nncp_wait_retries: 30
+nncp_wait_delay: 10

@@ -1,24 +1,14 @@
 ---
-# 06-networking-patch.yml — PLACEHOLDER: Networking patch before data plane deployment.
+# 06-networking-patch.yml — Prepare RHOCP networking for RHOSO (network isolation).
 #
-# This phase may be required to correct network configuration after control plane
-# deployment and before data plane provisioning. Content to be added once the
-# specific networking issue is identified.
-#
-# Known scenarios this may address:
-#   - OVN/OVS bridge configuration on the compute node
-#   - VLAN or MTU corrections for the data-plane network
-#   - MetalLB or NodePort adjustments
-- name: "Phase 06 — Networking Patch (PLACEHOLDER)"
+# Renders and applies the worker NNCPs using the lab portal Details-tab values
+# (external_ip_worker_1/2/3), applies the net-attach-def and MetalLB resources,
+# and enables global IP forwarding. Run after the control plane (05) and before
+# the data plane (07).
+- name: "Phase 06 — Networking Patch (RHOCP network isolation)"
   hosts: bastion
   gather_facts: false
   vars_files:
     - "{{ playbook_dir }}/../inventory/group_vars/all/vars.yml"
-  tasks:
-    - name: "PLACEHOLDER — networking patch tasks go here"
-      ansible.builtin.debug:
-        msg: |
-          This phase is a placeholder for a networking patch that may be
-          required between control plane and data plane deployment.
-          Tasks will be added once the specific fix is identified.
-      tags: [networking_patch, placeholder]
+  roles:
+    - role: networking-patch

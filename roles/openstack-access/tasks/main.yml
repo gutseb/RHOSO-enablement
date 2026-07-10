@@ -1,7 +1,312 @@
 ---
-# openstack-access/tasks/main.yml — PLACEHOLDER
-# Tasks will be added as lab content is developed.
-- name: "PLACEHOLDER — openstack-access tasks"
+# Verifies OpenStack access and provisions the smoke-test resources
+# (upstream: gitops/access-gitops.html).
+#
+# Every OpenStack change is pre-checked: if the resource already exists the
+# create step is skipped and the summary at the end reports it as
+# "already configured".
+
+- name: Assert lab portal variables are set
+  ansible.builtin.assert:
+    that:
+      - external_ip_bastion is defined
+      - external_ip_bastion != "REPLACE_WITH_PORTAL_VALUE"
+      - public_net_start is defined
+      - public_net_start != "REPLACE_WITH_PORTAL_VALUE"
+      - public_net_end is defined
+      - public_net_end != "REPLACE_WITH_PORTAL_VALUE"
+      - conversion_host_ip is defined
+      - conversion_host_ip != "REPLACE_WITH_PORTAL_VALUE"
+    fail_msg: >-
+      Fill the lab portal Details-tab values (external_ip_bastion,
+      public_net_start/end, conversion_host_ip) in
+      inventory/group_vars/all/vars.yml before running this phase.
+
+# ── Verify control plane services (read-only) ─────────────────────────────────
+
+- name: Verify OpenStack compute services
+  ansible.builtin.shell: "{{ openstackclient_rsh }} openstack compute service list"
+  register: compute_services
+  changed_when: false
+
+- name: Verify OpenStack network agents
+  ansible.builtin.shell: "{{ openstackclient_rsh }} openstack network agent list"
+  register: network_agents
+  changed_when: false
+
+- name: Display service status
   ansible.builtin.debug:
-    msg: "Phase tasks for role 'openstack-access' are not yet implemented. Paste lab content to proceed."
-  tags: [placeholder]
+    msg: "{{ compute_services.stdout_lines + network_agents.stdout_lines }}"
+
+- name: Map compute nodes to their compute cell (safe to re-run)
+  ansible.builtin.command: >
+    oc rsh -n {{ openstack_namespace }} nova-cell0-conductor-0
+    nova-manage cell_v2 discover_hosts --verbose
+  register: discover_hosts
+  changed_when: "'Creating host mapping' in discover_hosts.stdout"
+
+# ── Bastion external network connection ───────────────────────────────────────
+
+- name: List existing NetworkManager connections on the bastion
+  ansible.builtin.command: nmcli -g NAME connection show
+  register: bastion_nm_connections
+  changed_when: false
+
+- name: Add bastion external network connection (static-eth1)
+  ansible.builtin.command: >
+    nmcli con add con-name "static-eth1" ifname eth1 type ethernet
+    ip4 {{ external_ip_bastion }}/16
+  become: true
+  when: "'static-eth1' not in bastion_nm_connections.stdout_lines"
+  register: bastion_eth1_added
+
+- name: Bring up bastion static-eth1
+  ansible.builtin.command: nmcli con up "static-eth1"
+  become: true
+  when: bastion_eth1_added is changed
+
+# ── Flavor ────────────────────────────────────────────────────────────────────
+
+- name: Check if flavor exists
+  ansible.builtin.shell: "{{ openstackclient_rsh }} openstack flavor show {{ test_flavor_name }}"
+  register: flavor_check
+  changed_when: false
+  failed_when: false
+
+- name: Create test flavor
+  ansible.builtin.shell: >
+    {{ openstackclient_rsh }} openstack flavor create
+    --ram 512 --disk 1 --vcpu 1 --public {{ test_flavor_name }}
+  when: flavor_check.rc != 0
+
+# ── Image ─────────────────────────────────────────────────────────────────────
+
+- name: Check if image exists
+  ansible.builtin.shell: "{{ openstackclient_rsh }} openstack image show {{ test_image_name }}"
+  register: image_check
+  changed_when: false
+  failed_when: false
+
+- name: Download cirros image into the openstackclient pod
+  ansible.builtin.shell: >
+    {{ openstackclient_rsh }} bash -c
+    'test -f {{ cirros_image_file }} || curl -sS -O -L {{ cirros_image_url }}'
+  when: image_check.rc != 0
+
+- name: Create test image
+  ansible.builtin.shell: >
+    {{ openstackclient_rsh }} openstack image create {{ test_image_name }}
+    --container-format bare --disk-format qcow2 --public
+    --file {{ cirros_image_file }}
+  when: image_check.rc != 0
+
+# ── Keypair ───────────────────────────────────────────────────────────────────
+
+- name: Check if keypair exists
+  ansible.builtin.shell: "{{ openstackclient_rsh }} openstack keypair show {{ test_keypair_name }}"
+  register: keypair_check
+  changed_when: false
+  failed_when: false
+
+- name: Generate PEM keypair in the openstackclient pod
+  ansible.builtin.shell: >
+    {{ openstackclient_rsh }} bash -c
+    'mkdir -p ~/.ssh && test -f ~/.ssh/id_rsa_pem
+    || ssh-keygen -m PEM -t rsa -b 2048 -N "" -f ~/.ssh/id_rsa_pem'
+  when: keypair_check.rc != 0
+
+- name: Create keypair
+  ansible.builtin.shell: >
+    {{ openstackclient_rsh }} bash -c
+    'openstack keypair create --public-key ~/.ssh/id_rsa_pem.pub {{ test_keypair_name }}'
+  when: keypair_check.rc != 0
+
+# ── Security group and rules ──────────────────────────────────────────────────
+
+- name: Check if security group exists
+  ansible.builtin.shell: "{{ openstackclient_rsh }} openstack security group show {{ test_secgroup_name }}"
+  register: secgroup_check
+  changed_when: false
+  failed_when: false
+
+- name: Create security group
+  ansible.builtin.shell: >
+    {{ openstackclient_rsh }} openstack security group create {{ test_secgroup_name }}
+  when: secgroup_check.rc != 0
+
+- name: Ensure security group rules (SSH, ICMP, DNS)
+  ansible.builtin.shell: "{{ openstackclient_rsh }} openstack security group rule create {{ item }}"
+  loop:
+    - "{{ test_secgroup_name }} --protocol tcp --dst-port 22:22 --remote-ip 0.0.0.0/0"
+    - "--protocol icmp {{ test_secgroup_name }}"
+    - "--protocol udp --dst-port 53:53 {{ test_secgroup_name }}"
+  register: secgroup_rules
+  changed_when: secgroup_rules.rc == 0
+  failed_when: secgroup_rules.rc != 0 and 'already exists' not in secgroup_rules.stderr
+
+# ── Networks, subnets, router ─────────────────────────────────────────────────
+
+- name: Check if public network exists
+  ansible.builtin.shell: "{{ openstackclient_rsh }} openstack network show public"
+  register: public_net_check
+  changed_when: false
+  failed_when: false
+
+- name: Create public (external) network
+  ansible.builtin.shell: >
+    {{ openstackclient_rsh }} openstack network create --external
+    --provider-physical-network datacentre --provider-network-type flat public
+  when: public_net_check.rc != 0
+
+- name: Check if private network exists
+  ansible.builtin.shell: "{{ openstackclient_rsh }} openstack network show private"
+  register: private_net_check
+  changed_when: false
+  failed_when: false
+
+- name: Create private network
+  ansible.builtin.shell: "{{ openstackclient_rsh }} openstack network create --internal private"
+  when: private_net_check.rc != 0
+
+- name: Check if public subnet exists
+  ansible.builtin.shell: "{{ openstackclient_rsh }} openstack subnet show public-net"
+  register: public_subnet_check
+  changed_when: false
+  failed_when: false
+
+- name: Create public subnet
+  ansible.builtin.shell: >
+    {{ openstackclient_rsh }} openstack subnet create public-net
+    --subnet-range {{ public_network_cidr }}
+    --no-dhcp
+    --gateway {{ openstack_gateway }}
+    --allocation-pool start={{ public_net_start }},end={{ public_net_end }}
+    --network public
+  when: public_subnet_check.rc != 0
+
+- name: Check if private subnet exists
+  ansible.builtin.shell: "{{ openstackclient_rsh }} openstack subnet show private-net"
+  register: private_subnet_check
+  changed_when: false
+  failed_when: false
+
+- name: Create private subnet
+  ansible.builtin.shell: >
+    {{ openstackclient_rsh }} openstack subnet create private-net
+    --subnet-range {{ private_network_cidr }}
+    --network private
+  when: private_subnet_check.rc != 0
+
+- name: Check if router exists
+  ansible.builtin.shell: "{{ openstackclient_rsh }} openstack router show vrouter"
+  register: router_check
+  changed_when: false
+  failed_when: false
+
+- name: Create router
+  ansible.builtin.shell: "{{ openstackclient_rsh }} openstack router create vrouter"
+  when: router_check.rc != 0
+
+- name: Check router external gateway
+  ansible.builtin.shell: >
+    {{ openstackclient_rsh }} openstack router show vrouter -f value -c external_gateway_info
+  register: router_gw_check
+  changed_when: false
+
+- name: Set router external gateway to public network
+  ansible.builtin.shell: "{{ openstackclient_rsh }} openstack router set vrouter --external-gateway public"
+  when: router_gw_check.stdout in ['None', 'null', '']
+
+- name: Attach private subnet to router (skips if already attached)
+  ansible.builtin.shell: "{{ openstackclient_rsh }} openstack router add subnet vrouter private-net"
+  register: router_subnet_add
+  changed_when: router_subnet_add.rc == 0
+  failed_when: >-
+    router_subnet_add.rc != 0
+    and 'already has a port' not in router_subnet_add.stderr
+
+# ── Test server and floating IP ───────────────────────────────────────────────
+
+- name: Check if test server exists
+  ansible.builtin.shell: "{{ openstackclient_rsh }} openstack server show {{ test_server_name }}"
+  register: server_check
+  changed_when: false
+  failed_when: false
+
+- name: Create test server
+  ansible.builtin.shell: >
+    {{ openstackclient_rsh }} openstack server create
+    --flavor {{ test_flavor_name }} --key-name {{ test_keypair_name }}
+    --network private --security-group {{ test_secgroup_name }}
+    --image {{ test_image_name }} {{ test_server_name }}
+  when: server_check.rc != 0
+
+- name: Check if floating IP exists
+  ansible.builtin.shell: "{{ openstackclient_rsh }} openstack floating ip show {{ conversion_host_ip }}"
+  register: fip_check
+  changed_when: false
+  failed_when: false
+
+- name: Create floating IP ({{ conversion_host_ip }})
+  ansible.builtin.shell: >
+    {{ openstackclient_rsh }} openstack floating ip create public
+    --floating-ip-address {{ conversion_host_ip }}
+  when: fip_check.rc != 0
+
+- name: Check if floating IP is attached to the test server
+  ansible.builtin.shell: >
+    {{ openstackclient_rsh }} openstack server show {{ test_server_name }}
+    -f value -c addresses
+  register: server_addresses
+  changed_when: false
+
+- name: Attach floating IP to the test server
+  ansible.builtin.shell: >
+    {{ openstackclient_rsh }} openstack server add floating ip
+    {{ test_server_name }} {{ conversion_host_ip }}
+  when: conversion_host_ip not in server_addresses.stdout
+
+- name: Wait for test server to become ACTIVE
+  ansible.builtin.shell: >
+    {{ openstackclient_rsh }} openstack server show {{ test_server_name }} -f value -c status
+  register: server_status
+  until: server_status.stdout == "ACTIVE"
+  retries: 30
+  delay: 10
+  changed_when: false
+
+- name: Ping the test server on its floating IP
+  ansible.builtin.command: ping -c 3 -W 2 {{ conversion_host_ip }}
+  register: vm_ping
+  until: vm_ping.rc == 0
+  retries: "{{ vm_ping_retries }}"
+  delay: "{{ vm_ping_delay }}"
+  changed_when: false
+
+# ── Horizon ───────────────────────────────────────────────────────────────────
+
+- name: Get Horizon route
+  ansible.builtin.command: >
+    oc get routes horizon -n {{ openstack_namespace }}
+    -o jsonpath=https://{.status.ingress[0].host}
+  register: horizon_route
+  changed_when: false
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+
+- name: Display access summary
+  ansible.builtin.debug:
+    msg:
+      - "bastion static-eth1 : {{ 'already configured' if 'static-eth1' in bastion_nm_connections.stdout_lines else 'created' }}"
+      - "flavor {{ test_flavor_name }}         : {{ 'already configured' if flavor_check.rc == 0 else 'created' }}"
+      - "image {{ test_image_name }}        : {{ 'already configured' if image_check.rc == 0 else 'created' }}"
+      - "keypair {{ test_keypair_name }}     : {{ 'already configured' if keypair_check.rc == 0 else 'created' }}"
+      - "secgroup {{ test_secgroup_name }}     : {{ 'already configured' if secgroup_check.rc == 0 else 'created' }}"
+      - "network public      : {{ 'already configured' if public_net_check.rc == 0 else 'created' }}"
+      - "network private     : {{ 'already configured' if private_net_check.rc == 0 else 'created' }}"
+      - "subnet public-net   : {{ 'already configured' if public_subnet_check.rc == 0 else 'created' }}"
+      - "subnet private-net  : {{ 'already configured' if private_subnet_check.rc == 0 else 'created' }}"
+      - "router vrouter      : {{ 'already configured' if router_check.rc == 0 else 'created' }}"
+      - "server {{ test_server_name }}  : {{ 'already configured' if server_check.rc == 0 else 'created' }} (ACTIVE, ping OK)"
+      - "floating IP {{ conversion_host_ip }} : {{ 'already configured' if fip_check.rc == 0 else 'created' }}"
+      - "Horizon             : {{ horizon_route.stdout }} (admin / openstack)"

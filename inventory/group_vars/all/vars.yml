@@ -10,6 +10,8 @@
 # Your unique lab GUID — from the lab portal Overview tab (e.g. 8mdhj).
 # Parameterises all URLs and key names.
 lab_guid: "REPLACE_WITH_YOUR_LAB_GUID"
+# Alias used by some upstream templates
+guid: "{{ lab_guid }}"
 
 # Your GitHub username — used to construct your fork URL
 github_id: "REPLACE_WITH_YOUR_GITHUB_ID"
@@ -32,7 +34,10 @@ ocp_admin_user: "admin"
 # ── GitHub / GitOps ───────────────────────────────────────────────────────────
 lab_repo_name: "showroom_osp-on-ocp-day2"
 lab_repo_ssh_url: "git@github.com:{{ github_id }}/{{ lab_repo_name }}.git"
-lab_repo_local_path: "~/labrepo"
+lab_repo_local_path: "/home/{{ bastion_user }}/labrepo"
+# Each lab environment gets its own branch. If you need to start over with a
+# new lab GUID, update lab_guid above — a fresh branch is created automatically.
+lab_branch: "lab-{{ lab_guid }}"
 
 # ── RHOSO Namespaces ─────────────────────────────────────────────────────────
 openstack_operators_namespace: "openstack-operators"
@@ -41,6 +46,10 @@ rhoso_gitops_namespace: "openshift-gitops"
 
 # Working directory on the bastion where generated files are placed
 files_directory: "openstack-files"
+
+# Every file the automation renders is copied here (one subfolder per phase)
+# so each run's inputs can be audited afterwards. Gitignored.
+render_artifacts_dir: "{{ playbook_dir }}/../artifacts"
 
 # ── Network Configuration ─────────────────────────────────────────────────────
 networks:
@@ -116,16 +125,12 @@ compute_nodes:
     tenant_ip: "172.19.0.100"
     external_ip: "172.21.0.100"
 
-# ── OCP Worker External IPs (NNCP / kustomize patches) ───────────────────────
-rhoso_external_ip_worker_1: "172.21.0.21"
-rhoso_external_ip_worker_2: "172.21.0.22"
-rhoso_external_ip_worker_3: "172.21.0.23"
-rhoso_external_ip_bastion: "172.21.0.50"
-
 # ── Lab Portal Variables (from the Details tab) ───────────────────────────────
 # These are provided per-student in the lab portal Details tab as export statements.
 # Run:  bash setup-lab-vars.sh   (paste your export block, then Ctrl+D)
-# Used for later OpenStack operator phases (floating IPs, public network, migration).
+# external_ip_worker_1/2/3 are the NNCP external-network IPs used by the
+# control-plane (05) and networking-patch (06) phases; the rest are used for
+# later OpenStack phases (floating IPs, public network, migration).
 external_ip_worker_1: "REPLACE_WITH_PORTAL_VALUE"
 external_ip_worker_2: "REPLACE_WITH_PORTAL_VALUE"
 external_ip_worker_3: "REPLACE_WITH_PORTAL_VALUE"
@@ -133,6 +138,10 @@ external_ip_bastion:  "REPLACE_WITH_PORTAL_VALUE"
 public_net_start:     "REPLACE_WITH_PORTAL_VALUE"
 public_net_end:       "REPLACE_WITH_PORTAL_VALUE"
 conversion_host_ip:   "REPLACE_WITH_PORTAL_VALUE"
+
+# ── OpenStack Defaults ────────────────────────────────────────────────────────
+# base64 of "openstack" — default service password for OpenStack components
+default_password_b64: "b3BlbnN0YWNr"
 
 # ── Timeouts (seconds) ────────────────────────────────────────────────────────
 operator_wait_timeout: 600
