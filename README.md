@@ -32,7 +32,7 @@ This repo automates the initial RHOSO deployment so students can focus on day-2 
 Fork `https://github.com/rh-osp-demo/showroom_osp-on-ocp-day2` into your GitHub account.
 This is where your environment-specific manifests will be pushed.
 
-[Set up your deploy keys](### Set up deploy keys)
+[Set up your deploy keys](### Set up deploy keys (from the GitHub docs))
 
 ### 2. Clone This Automation Repo on the Bastion
 
