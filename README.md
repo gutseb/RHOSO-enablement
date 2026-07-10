@@ -32,7 +32,7 @@ This repo automates the initial RHOSO deployment so students can focus on day-2 
 Fork `https://github.com/rh-osp-demo/showroom_osp-on-ocp-day2` into your GitHub account.
 This is where your environment-specific manifests will be pushed.
 
-[Set up your deploy keys](#deploy-keys)
+[Set up your deploy keys](#set-up-deploy-keys)
 
 ### 2. Clone This Automation Repo on the Bastion
 
@@ -139,7 +139,7 @@ ssh-add ~/.ssh/<GUID>key.pem      # e.g. ssh-add ~/.ssh/5mv5rkey.pem
 # Identity added: /home/lab-user/.ssh/5mv5rkey.pem
 ```
 
-### Set up deploy keys (from the GitHub docs) {#deploy-keys}
+### Set up deploy keys (from the GitHub docs) 
 
 1. Run the `ssh-keygen` procedure on your server, and remember where you save
    the generated public and private rsa key pair.
