@@ -32,6 +32,8 @@ This repo automates the initial RHOSO deployment so students can focus on day-2 
 Fork `https://github.com/rh-osp-demo/showroom_osp-on-ocp-day2` into your GitHub account.
 This is where your environment-specific manifests will be pushed.
 
+[Set up your deploy keys](### Set up deploy keys)
+
 ### 2. Clone This Automation Repo on the Bastion
 
 The playbooks run **on the bastion**. SSH in using the command from the lab
@@ -57,6 +59,15 @@ github_id: "YOUR_GITHUB_ID"
 # Used to reach the internal lab hosts (nfsserver, compute01) from the bastion.
 bastion_hostname: "ssh.ocpv05.rhdp.net"
 bastion_port: "30883"
+```
+
+Add your key to ssh-agent also ensure your fork has this key with write permissions
+
+
+```bash
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/<GUID>key.pem      # e.g. ssh-add ~/.ssh/5mv5rkey.pem
+# Identity added: /home/lab-user/.ssh/5mv5rkey.pem
 ```
 
 ### 4. Import the Lab Portal Details Variables
