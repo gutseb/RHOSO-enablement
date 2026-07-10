@@ -83,12 +83,18 @@
   delay: 15
   changed_when: false
 
-- name: Wait for OpenStack CRD to be available
+# The OLM install only provides the operator and its own CRD
+# (openstacks.operator.openstack.org). The service CRDs — including
+# openstackcontrolplanes.core.openstack.org — are installed by the operator
+# AFTER the OpenStack initialisation resource below is created, so the
+# ordering here matters on a clean cluster.
+
+- name: Wait for OpenStack initialisation CRD to be available
   ansible.builtin.shell: >
-    oc get crd openstackcontrolplanes.core.openstack.org
+    oc get crd openstacks.operator.openstack.org
     -o jsonpath='{.metadata.name}' 2>/dev/null
-  register: crd_check
-  until: crd_check.rc == 0 and crd_check.stdout | length > 0
+  register: init_crd_check
+  until: init_crd_check.rc == 0 and init_crd_check.stdout | length > 0
   retries: 30
   delay: 10
   changed_when: false
@@ -103,7 +109,21 @@
       namespace: {{ openstack_operators_namespace }}
     EOF
   register: init_result
+  # the operator's admission webhook can take a moment to come up
+  until: init_result.rc == 0
+  retries: 12
+  delay: 10
   changed_when: "'created' in init_result.stdout or 'configured' in init_result.stdout"
+
+- name: Wait for OpenStack control plane CRD to be installed by the operator
+  ansible.builtin.shell: >
+    oc get crd openstackcontrolplanes.core.openstack.org
+    -o jsonpath='{.metadata.name}' 2>/dev/null
+  register: crd_check
+  until: crd_check.rc == 0 and crd_check.stdout | length > 0
+  retries: 30
+  delay: 10
+  changed_when: false
 
 - name: Wait for OpenStack operator pods to be Running
   ansible.builtin.shell: >

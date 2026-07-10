@@ -32,11 +32,15 @@ This repo automates the initial RHOSO deployment so students can focus on day-2 
 Fork `https://github.com/rh-osp-demo/showroom_osp-on-ocp-day2` into your GitHub account.
 This is where your environment-specific manifests will be pushed.
 
-### 2. Clone This Automation Repo
+### 2. Clone This Automation Repo on the Bastion
 
-No fork needed — clone directly:
+The playbooks run **on the bastion**. SSH in using the command from the lab
+portal Overview tab, then clone directly (no fork needed):
 
 ```bash
+# from the portal Overview tab, e.g.:
+ssh lab-user@ssh.ocpv05.rhdp.net -p 30883
+
 git clone https://github.com/gutseb/RHOSO-enablement.git
 cd RHOSO-enablement
 ```
@@ -46,11 +50,39 @@ cd RHOSO-enablement
 Edit `inventory/group_vars/all/vars.yml`:
 
 ```yaml
-lab_uuid: "YOUR_UUID"       # from your lab welcome email
+lab_guid: "YOUR_GUID"                      # portal Overview tab (e.g. zf6s2)
 github_id: "YOUR_GITHUB_ID"
+
+# From the portal SSH command: ssh lab-user@<hostname> -p <port>
+# Used to reach the internal lab hosts (nfsserver, compute01) from the bastion.
+bastion_hostname: "ssh.ocpv05.rhdp.net"
+bastion_port: "30883"
 ```
 
-### 4. Set Up Your Vault (Secrets)
+### 4. Import the Lab Portal Details Variables
+
+The portal **Details tab** provides an export block with your external IPs.
+Import it (paste the block, then press `Ctrl+D`):
+
+```bash
+bash setup-lab-vars.sh
+```
+
+```bash
+# example of the block you paste:
+export EXTERNAL_IP_WORKER_1=192.168.19.192
+export EXTERNAL_IP_WORKER_2=192.168.19.193
+export EXTERNAL_IP_WORKER_3=192.168.19.194
+export EXTERNAL_IP_BASTION=192.168.19.195
+export PUBLIC_NET_START=192.168.19.196
+export PUBLIC_NET_END=192.168.19.207
+export CONVERSION_HOST_IP=192.168.19.202
+```
+
+These values feed the control-plane NNCP patches (05), the networking patch
+(06), and the OpenStack access phase (08).
+
+### 5. Set Up Your Vault (Secrets)
 
 ```bash
 bash setup-vault.sh
@@ -58,7 +90,7 @@ bash setup-vault.sh
 
 Fill in your bastion password, OCP admin password, and Red Hat pull secret when prompted. The vault is encrypted and excluded from git.
 
-### 5. Run All Phases
+### 6. Run All Phases
 
 ```bash
 ansible-playbook playbooks/site.yml --ask-vault-pass
@@ -69,6 +101,9 @@ Or run a single phase:
 ```bash
 ansible-playbook playbooks/05-control-plane.yml --ask-vault-pass
 ```
+
+See [lab-exercises/00-setup.md](lab-exercises/00-setup.md) for the full
+step-by-step setup, including GitHub deploy keys and SSH configuration.
 
 ## Security Notes
 
