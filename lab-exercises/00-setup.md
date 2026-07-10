@@ -128,8 +128,14 @@ In your GitHub fork:
 1. Go to **Settings → Deploy keys → Add deploy key**
 2. Title: `bastion RHOSO gitops key`
 3. Paste the public key
-4. Check **Allow write access**
+4. Check **Allow write access** — required; the automation pushes overlays to your fork
 5. Click **Save**
+
+![Repository header showing the Settings tab](images/repo-actions-settings.webp)
+
+> Without this deploy key the control-plane (05) and data-plane (07) phases
+> fail at "Push overlay to GitHub". Reference:
+> <https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys>
 
 ---
 

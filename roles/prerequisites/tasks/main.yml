@@ -80,13 +80,30 @@
     path: "{{ lab_repo_local_path }}"
   register: labrepo_stat
 
-- name: Clone lab repo from student GitHub fork
+# The labrepo is cloned over SSH so the bastion can PUSH overlays to the fork.
+# This requires the lab public key (~/.ssh/{{ lab_guid }}key.pub) to be added
+# to the fork as a deploy key WITH write access — see lab-exercises/00-setup.md
+# Step 5 and https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys
+- name: Clone lab repo from student GitHub fork (SSH, lab deploy key)
   ansible.builtin.git:
-    repo: "https://github.com/{{ github_id }}/{{ lab_repo_name }}.git"
+    repo: "{{ lab_repo_ssh_url }}"
     dest: "{{ lab_repo_local_path }}"
     version: main
     accept_hostkey: true
+    key_file: "{{ bastion_ssh_key_path }}"
   when: not labrepo_stat.stat.exists
+
+- name: Ensure labrepo origin uses the SSH URL (converts older HTTPS clones)
+  ansible.builtin.command:
+    cmd: git remote set-url origin {{ lab_repo_ssh_url }}
+    chdir: "{{ lab_repo_local_path }}"
+  changed_when: true
+
+- name: Configure labrepo git to use the lab deploy key
+  ansible.builtin.command:
+    cmd: git config core.sshCommand "ssh -i {{ bastion_ssh_key_path }} -o StrictHostKeyChecking=accept-new"
+    chdir: "{{ lab_repo_local_path }}"
+  changed_when: true
 
 - name: Configure git identity on bastion
   ansible.builtin.command: "git config --global {{ item.key }} '{{ item.value }}'"

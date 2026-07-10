@@ -105,6 +105,40 @@ ansible-playbook playbooks/05-control-plane.yml --ask-vault-pass
 See [lab-exercises/00-setup.md](lab-exercises/00-setup.md) for the full
 step-by-step setup, including GitHub deploy keys and SSH configuration.
 
+## Troubleshooting
+
+### `git push` to your fork fails (authentication)
+
+The control-plane (05) and data-plane (07) phases push kustomize overlays to
+**your fork** of the showroom repo. The bastion authenticates with the lab SSH
+key pair — your fork must have the lab **public key** added as a **deploy key
+with write access**, or the push fails with an authentication error.
+
+- Public key on the bastion: `~/.ssh/<GUID>key.pub`
+- Add it here: `https://github.com/<your_github_id>/showroom_osp-on-ocp-day2/settings/keys`
+- GitHub reference: <https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys>
+
+### Set up deploy keys (from the GitHub docs)
+
+1. Run the `ssh-keygen` procedure on your server, and remember where you save
+   the generated public and private rsa key pair.
+   _In this lab the key pair already exists on the bastion:
+   `~/.ssh/<GUID>key.pem` / `~/.ssh/<GUID>key.pub` — skip this step._
+2. On GitHub, navigate to the main page of the repository.
+3. Under your repository name, click **Settings**. If you cannot see the
+   "Settings" tab, select the dropdown menu, then click **Settings**.
+
+   ![Repository header showing the Settings tab](lab-exercises/images/repo-actions-settings.webp)
+
+4. In the sidebar, click **Deploy Keys**.
+5. Click **Add deploy key**.
+6. In the "Title" field, provide a title.
+7. In the "Key" field, paste your public key.
+8. Select **Allow write access** if you want this key to have write access to
+   the repository. A deploy key with write access lets a deployment push to
+   the repository. _Required for this lab._
+9. Click **Add key**.
+
 ## Security Notes
 
 - **`inventory/group_vars/all/vault.yml`** is in `.gitignore` — never committed

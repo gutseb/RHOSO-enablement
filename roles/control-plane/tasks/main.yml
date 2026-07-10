@@ -120,13 +120,27 @@
     and 'nothing to commit' not in git_commit.stdout
     and 'nothing added to commit' not in git_commit.stdout
 
+# Always attempt the push — if a previous run committed but failed to push,
+# a re-run would otherwise strand the commit. Pushing with nothing new is a
+# no-op ("Everything up-to-date").
 - name: Push overlay to GitHub
   ansible.builtin.command:
     cmd: git push origin {{ lab_branch }}
     chdir: "{{ lab_repo_local_path }}"
   register: git_push
-  changed_when: git_push.rc == 0
-  when: git_commit.rc == 0
+  changed_when: "'Everything up-to-date' not in git_push.stderr"
+  failed_when: false
+
+- name: Stop with deploy-key guidance if the push failed
+  ansible.builtin.fail:
+    msg: >-
+      Pushing to your fork failed: {{ git_push.stderr | default('unknown error') }} —
+      make sure the lab public key (~/.ssh/{{ lab_guid }}key.pub on the bastion)
+      is added to the fork as a deploy key WITH write access:
+      https://github.com/{{ github_id }}/{{ lab_repo_name }}/settings/keys —
+      setup steps in lab-exercises/00-setup.md (Step 5) and
+      https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys
+  when: git_push.rc != 0
 
 # ── Deploy via ArgoCD ─────────────────────────────────────────────────────────
 
