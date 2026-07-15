@@ -386,6 +386,39 @@ oc logs -n openstack <pod> --previous
 oc get events -n openstack --sort-by=.lastTimestamp
 ```
 
+Custom must-gathers are also sometimes useful in troubleshooting. 
+
+```
+# Storage specific examples
+oc adm must-gather --image-stream=openshift/storage
+oc adm must-gather --image=registry.redhat.io/odf4/odf-must-gather-rhel9:latest --dest-dir=/tmp/must-gather-storage
+# without custom image
+oc get pv,pvc,storageclass -A -o yaml > storage-objects.yaml
+oc get csidrivers,csinodes -o yaml >> storage-objects.yaml
+
+# Network specific examples
+oc adm must-gather --image-stream=openshift/network-tools
+oc adm must-gather --image=registry.redhat.io/openshift4/network-tools-rhel8:latest
+oc adm must-gather --image=registry.redhat.io/openshift4/network-tools-rhel8:latest -- gather_network_logs
+```
+
+Combining must-gather + inspect
+
+```
+# General (lightweight) cluster collection
+oc adm must-gather --dest-dir=/tmp/must-gather-general
+
+# Detailed collection of only the problem project
+oc adm inspect ns/my-namespace --dest-dir=/tmp/inspect-my-app
+```
+
+Narrowing further to a single resource examples
+
+```
+oc adm inspect deployment/my-app -n my-namespace --dest-dir=/tmp/inspect-my-deployment
+oc adm inspect route/my-app -n my-namespace --dest-dir=/tmp/inspect-my-route
+```
+
 ### **RHCOS master/worker nodes: sosreport via toolbox**
 
 RHCOS does not ship the `sos` tool natively. The supported method is a debug pod plus the `toolbox` support-tools container (`registry.redhat.io/rhel9/support-tools`; mirror it first in disconnected environments):
