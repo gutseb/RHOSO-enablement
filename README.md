@@ -43,6 +43,7 @@ portal Overview tab, then clone directly (no fork needed):
 # from the portal Overview tab, e.g.:
 ssh lab-user@ssh.ocpv05.rhdp.net -p 30883
 
+sudo dnf install ansible -y
 git clone https://github.com/gutseb/RHOSO-enablement.git
 cd RHOSO-enablement
 ```
