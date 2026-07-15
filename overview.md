@@ -31,7 +31,7 @@ RHOSO separates the OpenStack control plane from the data plane. The control pla
 
 * Backing infrastructure is reconciled by dedicated operators: `mariadb-operator` (Galera), `rabbitmq-cluster-operator` (RabbitMQ), `infra-operator` (Memcached, Redis, NetConfig/IPAM, DNS), and `ovn-operator` (OVN NB/SB databases and northd).
 
-* TLS-e (TLS everywhere) is enabled by default and handled through cert-manager Issuers; public routes and internal/pod-level endpoints are certificate-backed. Disabling TLS on RHOSO is not supported.
+* TLS-e (TLS everywhere) is enabled by default and handled through cert-manager Issuers; public routes and internal/pod-level endpoints are certificate-backed. Public endpoint TLS cannot be disabled; internal pod-level TLS is configurable (`spec.tls.podLevel.enabled: false` in `OpenStackControlPlane`) but enabled by default.
 
 ## **1.2 Data Plane (EDPM)**
 
@@ -209,29 +209,7 @@ Scaling is a replica count change on the Memcached section of the `OpenStackCont
 
 ## **3.2 Data Plane (EDPM) Operations**
 
-### **Adding Compute Nodes (steps only)**
-
-1. Add the new node(s) to (or create) an `OpenStackDataPlaneNodeSet` (hostnames, networks, Ansible SSH key secret reference).
-
-2. Create a new `OpenStackDataPlaneDeployment` referencing that NodeSet to trigger the Ansible run. Early deployment services such as `validate-network` verify connectivity as part of the run itself.
-
-3. Track progress via the Job pods:
-
-```
-oc get pod -l app=openstackansibleee -n openstack -w
-oc get openstackdataplanedeployment -n openstack
-oc get openstackdataplanenodeset -n openstack
-```
-
-4. Confirm the new hypervisor registers, from the openstackclient pod: `openstack compute service list` and `openstack hypervisor list`.
-
-5. If the hypervisor doesn't appear after a successful Ansible run, trigger cell host discovery manually:
-
-```
-oc rsh -n openstack nova-cell0-conductor-0 nova-manage cell_v2 discover_hosts --verbose
-```
-
-### **Removing / Cordoning a Compute Node(steps only)**
+### **Cordoning a Compute Node (steps only)**
 
 1. Disable the nova-compute service for that host:
 
@@ -250,9 +228,7 @@ done
 
 3. Confirm zero instances remain: `openstack server list --host <host> --all-projects`.
 
-4. Remove the host from the `OpenStackDataPlaneNodeSet` inventory and run a new `OpenStackDataPlaneDeployment`, or decommission the node entirely.
-
-5. Clean up stale records: `openstack compute service delete <id>` and any lingering OVN network agents (`openstack network agent list` / `openstack network agent delete <id>`).
+4. When maintenance is complete, re-enable the service: `openstack compute service set <host> nova-compute --enable`.
 
 **EDPM is Ansible, not GitOps-on-the-node:** Nothing is continuously reconciled on the data-plane nodes the way the control plane is. Drift only gets corrected the next time an `OpenStackDataPlaneDeployment` runs — so run one after any manual fix you make directly on a compute node.
 
@@ -301,8 +277,10 @@ oc get ipaddresspool -n metallb-system
 * Each EDPM node runs ovn-controller, registering as an OVN chassis. Data-plane node networking (bonds, VLANs) is rendered by the EDPM Ansible roles (`edpm_network_config` using os-net-config) from the NodeSet's network definitions; the `NodeNetworkConfigurationPolicy` (NNCP)/nmstate objects configure the **OCP worker** attachments, and `NetConfig` defines the RHOSO network/subnet layout used for IPAM.
 
 ```
-# On an EDPM compute node(i.e. ssh -i /home/lab-user/.ssh/zf6s2key.pem cloud-user@compute01; sudo podman exec -it ovn_controller /bin/bash)
-sudo ovn-appctl -t ovn-controller connection-status
+# On an EDPM compute node (i.e. ssh -i /home/lab-user/.ssh/<GUID>key.pem cloud-user@compute01)
+# ovn-controller runs in a podman container — run ovn-appctl inside it:
+sudo podman exec ovn_controller ovn-appctl -t ovn-controller connection-status
+# Open vSwitch runs on the host:
 sudo ovs-vsctl show
 
 # Against the OVN SB DB (e.g. from the ovsdbserver-sb pod)
@@ -380,7 +358,6 @@ Work top-down through the reconciliation chain instead of jumping straight to po
 | Service pod CrashLoopBackOff | Check `oc logs --previous` first; common causes are a DB/MQ secret mismatch or a bad `customServiceConfig` patch |
 | Galera won't form cluster / no Primary | Check `wsrep_cluster_status` on each pod; after an ungraceful shutdown the operator's recovery logic may need help identifying the most-advanced node (highest seqno in the grastate) — see the mariadb-operator recovery procedure before any manual bootstrap |
 | RabbitMQ queues backing up | `rabbitmqctl list_queues name messages consumers` — zero consumers usually means the conductor/agent on the consuming side is stuck, not RabbitMQ itself |
-| Keystone tokens rejected / auth failures | Fernet key rotation is automated by the keystone-operator (keys live in a Secret; frequency/count set by `fernetRotationDays` / `fernetMaxActiveKeys`, default 5 active keys). Check keystone-operator logs and whether rotation settings are too aggressive for your token lifetime. The `keystone-cron` CronJob handles token/trust flush, not fernet rotation |
 | New compute host never appears in hypervisor list | Check the `app=openstackansibleee` Job logs for the deployment first; if Ansible succeeded, check chassis registration in the OVN SB DB and run `nova-manage cell_v2 discover_hosts --verbose` from a conductor pod |
 | Neutron port stuck DOWN / binding failed | Confirm ovn-controller is connected on the hosting compute (`ovn-appctl -t ovn-controller connection-status`) and that the chassis is present in the OVN SB DB |
 | Glance image upload fails or hangs | Check Ceph health and RBD pool permissions/quota first — Glance errors here are almost always backend, not Glance itself |
@@ -480,4 +457,4 @@ The common thread across operators, cluster operations, and troubleshooting is t
 
 * Practice a minor update in a non-production environment using the manual-approval + `OpenStackVersion` sequence in 2.3 before doing it live.
 
-* Pair this with hands-on EDPM node-add / node-remove drills (3.2), including the sosreport/toolbox collection in 4.3 — those workflows are the ones most teams under-practice before they need them during an incident.
+* Pair this with the hands-on compute-node cordon drill (3.2) and the sosreport/toolbox collection in 4.3 — those workflows are the ones most teams under-practice before they need them during an incident.
